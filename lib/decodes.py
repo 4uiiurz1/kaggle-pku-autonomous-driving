@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 import torch
 import torch.nn as nn
@@ -116,6 +117,6 @@ def decode(hm, reg, depth, eular=None, trig=None, quat=None, mask=None, K=100,
     pitch = pitch.view(batch, K, 1)
     roll = roll.view(batch, K, 1)
 
-    dets = torch.cat([scores, yaw, pitch, roll, xs, ys, zs], dim=2)
+    dets = torch.cat([yaw, pitch, roll, xs, ys, zs, scores], dim=2)
 
     return dets

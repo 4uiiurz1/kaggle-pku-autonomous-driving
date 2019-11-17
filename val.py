@@ -38,13 +38,15 @@ from lib.models import resnet_fpn
 from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
+from lib.utils.vis import visualize
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--name', default=None)
-    parser.add_argument('--score_thr', default=0.3, type=float)
+    parser.add_argument('--score_th', default=0.3, type=float)
+    parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
 
@@ -52,9 +54,9 @@ def parse_args():
 
 
 def main():
-    test_args = parse_args()
+    args = parse_args()
 
-    with open('models/%s/config.yaml' % test_args.name, 'r') as f:
+    with open('models/%s/config.yaml' % args.name, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     print('-'*20)
@@ -69,36 +71,31 @@ def main():
     mask_paths = np.array('inputs/train_masks/' + df['ImageId'].values + '.jpg')
     labels = np.array([convert_str_to_labels(s) for s in df['PredictionString']])
 
-    heads = {
-        'hm': 1,
-        'reg': 2,
-        'depth': 1,
-    }
-
-    criterion = {
-        'hm': losses.__dict__[config['hm_loss']](),
-        'reg': losses.__dict__[config['reg_loss']](),
-        'depth': losses.__dict__[config['depth_loss']](),
-    }
+    heads = OrderedDict([
+        ('hm', 1),
+        ('reg', 2),
+        ('depth', 1),
+    ])
 
     if config['rot'] == 'eular':
         heads['eular'] = 3
-        criterion['eular'] = losses.__dict__[config['eular_loss']]()
     elif config['rot'] == 'trig':
         heads['trig'] = 6
-        criterion['trig'] = losses.__dict__[config['trig_loss']]()
     elif config['rot'] == 'quat':
         heads['quat'] = 4
-        criterion['quat'] = losses.__dict__[config['quat_loss']]()
     else:
         raise NotImplementedError
 
-    for head in criterion.keys():
-        criterion[head] = criterion[key].cuda()
+    # criterion = OrderedDict()
+    # for head in heads.keys():
+    #     criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
 
-    folds = []
-    best_losses = []
-    # best_scores = []
+    pred_df = df.copy()
+    pred_df['PredictionString'] = np.nan
+    #
+    # avg_meters = {'loss': AverageMeter()}
+    # for head in heads.keys():
+    #     avg_meters[head] = AverageMeter()
 
     kf = KFold(n_splits=config['n_splits'], shuffle=True, random_state=41)
     for fold, (train_idx, val_idx) in enumerate(kf.split(img_paths)):
@@ -108,33 +105,20 @@ def main():
         train_mask_paths, val_mask_paths = mask_paths[train_idx], mask_paths[val_idx]
         train_labels, val_labels = labels[train_idx], labels[val_idx]
 
-        train_transform = None
-        val_transform = None
-
-        # train
-        train_set = Dataset(
-            train_img_paths,
-            train_mask_paths,
-            train_labels,
-            transform=train_transform)
-        train_loader = torch.utils.data.DataLoader(
-            train_set,
-            batch_size=config['batch_size'],
-            shuffle=True,
-            num_workers=config['batch_size'],
-            # pin_memory=True,
-        )
+        print(val_labels)
 
         val_set = Dataset(
             val_img_paths,
             val_mask_paths,
             val_labels,
-            transform=val_transform)
+            input_w=config['input_w'],
+            input_h=config['input_h'],
+            transform=None)
         val_loader = torch.utils.data.DataLoader(
             val_set,
-            batch_size=1,
+            batch_size=config['batch_size'],
             shuffle=False,
-            num_workers=config['batch_size'],
+            num_workers=config['num_workers'],
             # pin_memory=True,
         )
 
@@ -156,12 +140,23 @@ def main():
                 mask = batch['mask'].cuda()
                 hm = batch['hm'].cuda()
                 reg_mask = batch['reg_mask'].cuda()
-                reg = batch['reg'].cuda()
-                depth = batch['depth'].cuda()
-                # eular = batch['eular'].cuda()
-                quat = batch['quat'].cuda()
 
                 output = model(input)
+
+                # loss = 0
+                # losses = {}
+                # for head in heads.keys():
+                #     losses[head] = criterion[head](output[head], batch[head].cuda(),
+                #                                    mask if head == 'hm' else reg_mask)
+                #     loss += losses[head]
+                # losses['loss'] = loss
+                #
+                # avg_meters['loss'].update(losses['loss'].item(), input.size(0))
+                # postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
+                # for head in heads.keys():
+                #     avg_meters[head].update(losses[head].item(), input.size(0))
+                #     postfix[head + '_loss'] = avg_meters[head].avg
+                # pbar.set_postfix(postfix)
 
                 if config['rot'] == 'eular':
                     dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
@@ -169,112 +164,37 @@ def main():
                     dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
                 elif config['rot'] == 'quat':
                     dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
-                dets = dets.detach().cpu().numpy()[0]
-                dets = dets[dets[:, 0] > 0.3]
+                dets = dets.detach().cpu().numpy()
 
-                gt = batch['gt'].numpy()[0]
-                gt = gt[gt[:, 0] > test_args.score_thr]
+                for k, det in enumerate(dets):
+                    img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
+                    pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, -1] > args.score_th])
 
-                img = cv2.imread(batch['img_path'][0])
-                img_gt = visualize(img, gt)
-                img_pred = visualize(img, dets)
+                    if args.show:
+                        gt = batch['gt'].numpy()[k]
 
-                plt.subplot(121)
-                plt.imshow(img_gt)
-                plt.subplot(122)
-                plt.imshow(img_pred)
-                plt.show()
+                        img = cv2.imread(batch['img_path'][k])
+                        img_gt = visualize(img, gt[gt[:, -1] > 0])
+                        img_pred = visualize(img, det[det[:, -1] > args.score_th])
 
-                # pbar.set_description('loss %.4f' %losses.avg)
-                # pbar.set_description('loss %.4f - score %.4f' %(losses.avg, scores.avg))
+                        plt.subplot(121)
+                        plt.imshow(img_gt)
+                        plt.subplot(122)
+                        plt.imshow(img_pred)
+                        plt.show()
+
                 pbar.update(1)
             pbar.close()
 
-        print('val_loss:  %f' % best_loss)
-        # print('val_score: %f' % best_score)
-
-        folds.append(str(fold + 1))
-        best_losses.append(best_loss)
-        # best_scores.append(best_score)
-
         torch.cuda.empty_cache()
 
-        break
-        if not args.cv:
+        if not config['cv']:
             break
 
+    # print('loss: %f' %avg_meters['loss'].avg)
 
-from math import sin, cos
-
-# convert euler angle to rotation matrix
-def euler_to_Rot(yaw, pitch, roll):
-    Y = np.array([[cos(yaw), 0, sin(yaw)],
-                  [0, 1, 0],
-                  [-sin(yaw), 0, cos(yaw)]])
-    P = np.array([[1, 0, 0],
-                  [0, cos(pitch), -sin(pitch)],
-                  [0, sin(pitch), cos(pitch)]])
-    R = np.array([[cos(roll), -sin(roll), 0],
-                  [sin(roll), cos(roll), 0],
-                  [0, 0, 1]])
-    return np.dot(Y, np.dot(P, R))
-
-
-def draw_line(image, points):
-    color = (255, 0, 0)
-    cv2.line(image, tuple(points[0][:2]), tuple(points[3][:2]), color, 16)
-    cv2.line(image, tuple(points[0][:2]), tuple(points[1][:2]), color, 16)
-    cv2.line(image, tuple(points[1][:2]), tuple(points[2][:2]), color, 16)
-    cv2.line(image, tuple(points[2][:2]), tuple(points[3][:2]), color, 16)
-    return image
-
-
-def draw_points(image, points):
-    for (p_x, p_y, p_z) in points:
-        cv2.circle(image, (p_x, p_y), int(1000 / p_z), (0, 255, 0), -1)
-#         if p_x > image.shape[1] or p_y > image.shape[0]:
-#             print('Point', p_x, p_y, 'is out of image with shape', image.shape)
-    return image
-
-
-def visualize(img, coords):
-    # You will also need functions from the previous cells
-    x_l = 1.02
-    y_l = 0.80
-    z_l = 2.31
-
-    camera_matrix = np.array([[2304.5479, 0,  1686.2379],
-                          [0, 2305.8757, 1354.9849],
-                          [0, 0, 1]], dtype=np.float32)
-
-    img = img.copy()
-    for point in coords:
-        # Get values
-        _, yaw, pitch, roll, x, y, z = point
-        yaw = -yaw
-        pitch = -pitch
-        roll = -roll
-        # Math
-        Rt = np.eye(4)
-        t = np.array([x, y, z])
-        Rt[:3, 3] = t
-        Rt[:3, :3] = euler_to_Rot(yaw, pitch, roll).T
-        Rt = Rt[:3, :]
-        P = np.array([[x_l, -y_l, -z_l, 1],
-                      [x_l, -y_l, z_l, 1],
-                      [-x_l, -y_l, z_l, 1],
-                      [-x_l, -y_l, -z_l, 1],
-                      [0, 0, 0, 1]]).T
-        img_cor_points = np.dot(camera_matrix, np.dot(Rt, P))
-        img_cor_points = img_cor_points.T
-        img_cor_points[:, 0] /= img_cor_points[:, 2]
-        img_cor_points[:, 1] /= img_cor_points[:, 2]
-        img_cor_points = img_cor_points.astype(int)
-        # Drawing
-        img = draw_line(img, img_cor_points)
-        img = draw_points(img, img_cor_points[-1:])
-
-    return img
+    pred_df.to_csv('preds/%s_%.2f.csv' %(args.name, args.score_th), index=False)
+    print(pred_df.head())
 
 
 if __name__ == '__main__':

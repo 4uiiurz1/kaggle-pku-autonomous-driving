@@ -6,4 +6,5 @@ processed/*
 models/*
 submissions/*
 preds/*
+notebooks/*
 *.bat

@@ -37,9 +37,7 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def convert_str_to_labels(s):
-    names = ['model_type', 'yaw', 'pitch', 'roll', 'x', 'y', 'z']
-
+def convert_str_to_labels(s, names=['model_type', 'yaw', 'pitch', 'roll', 'x', 'y', 'z']):
     labels = []
     for l in np.array(s.split()).reshape([-1, 7]):
         labels.append(dict(zip(names, l.astype('float'))))
@@ -49,34 +47,12 @@ def convert_str_to_labels(s):
     return labels
 
 
-def convert_euler_to_quaternion(yaw, pitch, roll):
-    qx = np.sin(roll / 2) * np.cos(pitch / 2) * np.cos(yaw / 2) - \
-         np.cos(roll / 2) * np.sin(pitch / 2) * np.sin(yaw / 2)
-    qy = np.cos(roll / 2) * np.sin(pitch / 2) * np.cos(yaw / 2) + \
-         np.sin(roll / 2) * np.cos(pitch / 2) * np.sin(yaw / 2)
-    qz = np.cos(roll / 2) * np.cos(pitch / 2) * np.sin(yaw / 2) - \
-         np.sin(roll / 2) * np.sin(pitch / 2) * np.cos(yaw / 2)
-    qw = np.cos(roll / 2) * np.cos(pitch / 2) * np.cos(yaw / 2) + \
-         np.sin(roll / 2) * np.sin(pitch / 2) * np.sin(yaw / 2)
-
-    return qx, qy, qz, qw
-
-
-def convert_quaternion_to_euler(qx, qy, qz, qw):
-    t0 = 2.0 * (qw * qx + qy * qz)
-    t1 = 1.0 - 2.0 * (qx * qx + qy * qy)
-    roll = math.atan2(t0, t1)
-
-    t2 = 2.0 * (qw * qy - qz * qx)
-    t2 = 1.0 if t2 > 1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
-
-    t3 = 2.0 * (qw * qz + qx * qy)
-    t4 = 1.0 - 2.0 * (qy * qy + qz * qz)
-    yaw = math.atan2(t3, t4)
-
-    return yaw, pitch, roll
+def convert_labels_to_str(labels):
+    s = []
+    for label in labels:
+        for l in label:
+            s.append(str(l))
+    return ' '.join(s)
 
 
 def convert_3d_to_2d(x, y, z, fx=2304.5479, fy=2305.8757, cx=1686.2379, cy=1354.9849):

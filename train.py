@@ -61,7 +61,7 @@ def parse_args():
                         help='model architecture: (default: resnet18_fpn)')
     parser.add_argument('--input_w', default=640, type=int)
     parser.add_argument('--input_h', default=512, type=int)
-    parser.add_argument('--rot', default='eular', choices=['eular', 'trig', 'quat'])
+    parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
@@ -111,9 +111,10 @@ def parse_args():
     return args
 
 
-def train(config, train_loader, model, criterion, optimizer, epoch):
-    losses = = AverageMeter()
-    # scores = AverageMeter()
+def train(config, heads, train_loader, model, criterion, optimizer, epoch):
+    avg_meters = {'loss': AverageMeter()}
+    for head in heads.keys():
+        avg_meters[head] = AverageMeter()
 
     model.train()
 
@@ -126,15 +127,12 @@ def train(config, train_loader, model, criterion, optimizer, epoch):
         output = model(input)
 
         loss = 0
-        loss += criterion['hm'](output['hm'], batch['hm'].cuda(), mask)
-        loss += criterion['reg'](output['reg'], batch['reg'].cuda(), reg_mask)
-        loss += criterion['depth'](output['depth'], batch['depth'].cuda(), reg_mask)
-        if config['rot'] == 'eular':
-            loss += criterion['eular'](output['eular'], batch['eular'].cuda(), reg_mask)
-        elif config['rot'] == 'trig':
-            loss += criterion['trig'](output['trig'], batch['trig'].cuda(), reg_mask)
-        elif config['rot'] == 'quat':
-            loss += criterion['quat'](output['quat'], batch['quat'].cuda(), reg_mask)
+        losses = {}
+        for head in heads.keys():
+            losses[head] = criterion[head](output[head], batch[head].cuda(),
+                                           mask if head == 'hm' else reg_mask)
+            loss += losses[head]
+        losses['loss'] = loss
 
         # compute gradient and do optimizing step
         optimizer.zero_grad()
@@ -145,21 +143,22 @@ def train(config, train_loader, model, criterion, optimizer, epoch):
             loss.backward()
         optimizer.step()
 
-        losses.update(loss.item(), input.size(0))
-        # scores.update(score, input.size(0))
-
-        pbar.set_description('loss %.4f' %losses.avg)
-        # pbar.set_description('loss %.4f - score %.4f' %(losses.avg, scores.avg))
+        avg_meters['loss'].update(losses['loss'].item(), input.size(0))
+        postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
+        for head in heads.keys():
+            avg_meters[head].update(losses[head].item(), input.size(0))
+            postfix[head + '_loss'] = avg_meters[head].avg
+        pbar.set_postfix(postfix)
         pbar.update(1)
     pbar.close()
 
-    return losses.avg
-    # return losses.avg, scores.avg
+    return avg_meters['loss'].avg
 
 
-def validate(config, val_loader, model, criterion):
-    losses = AverageMeter()
-    # scores = AverageMeter()
+def validate(config, heads, val_loader, model, criterion):
+    avg_meters = {'loss': AverageMeter()}
+    for head in heads.keys():
+        avg_meters[head] = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
@@ -174,18 +173,20 @@ def validate(config, val_loader, model, criterion):
             output = model(input)
 
             loss = 0
-            loss += criterion['hm'](output['hm'], batch['hm'].cuda(), mask)
-            loss += criterion['reg'](output['reg'], batch['reg'].cuda(), reg_mask)
-            loss += criterion['depth'](output['depth'], batch['depth'].cuda(), reg_mask)
-            if config['rot'] == 'eular':
-                loss += criterion['eular'](output['eular'], batch['eular'].cuda(), reg_mask)
-            elif config['rot'] == 'trig':
-                loss += criterion['trig'](output['trig'], batch['trig'].cuda(), reg_mask)
-            elif config['rot'] == 'quat':
-                loss += criterion['quat'](output['quat'], batch['quat'].cuda(), reg_mask)
+            losses = {}
+            for head in heads.keys():
+                losses[head] = criterion[head](output[head], batch[head].cuda(),
+                                               mask if head == 'hm' else reg_mask)
+                loss += losses[head]
+            losses['loss'] = loss
 
-            losses.update(loss.item(), input.size(0))
-            # scores.update(score, input.size(0))
+            avg_meters['loss'].update(losses['loss'].item(), input.size(0))
+            postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
+            for head in heads.keys():
+                avg_meters[head].update(losses[head].item(), input.size(0))
+                postfix[head + '_loss'] = avg_meters[head].avg
+            pbar.set_postfix(postfix)
+            pbar.update(1)
 
             if config['rot'] == 'eular':
                 dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
@@ -193,16 +194,11 @@ def validate(config, val_loader, model, criterion):
                 dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
             elif config['rot'] == 'quat':
                 dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
-
-            pbar.set_description('loss %.4f' %losses.avg)
-            # pbar.set_description('loss %.4f - score %.4f' %(losses.avg, scores.avg))
-            pbar.update(1)
         pbar.close()
 
         print(dets[0, 0])
 
-    return losses.avg
-    # return losses.avg, scores.avg
+    return avg_meters['loss'].avg
 
 
 def main():
@@ -237,32 +233,24 @@ def main():
     if config['resume']:
         checkpoint = torch.load('models/%s/checkpoint.pth.tar' % config['name'])
 
-    heads = {
-        'hm': 1,
-        'reg': 2,
-        'depth': 1,
-    }
-
-    criterion = {
-        'hm': losses.__dict__[config['hm_loss']](),
-        'reg': losses.__dict__[config['reg_loss']](),
-        'depth': losses.__dict__[config['depth_loss']](),
-    }
+    heads = OrderedDict([
+        ('hm', 1),
+        ('reg', 2),
+        ('depth', 1),
+    ])
 
     if config['rot'] == 'eular':
         heads['eular'] = 3
-        criterion['eular'] = losses.__dict__[config['eular_loss']]()
     elif config['rot'] == 'trig':
         heads['trig'] = 6
-        criterion['trig'] = losses.__dict__[config['trig_loss']]()
     elif config['rot'] == 'quat':
         heads['quat'] = 4
-        criterion['quat'] = losses.__dict__[config['quat_loss']]()
     else:
         raise NotImplementedError
 
-    for key in criterion.keys():
-        criterion[key] = criterion[key].cuda()
+    criterion = OrderedDict()
+    for head in heads.keys():
+        criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
 
     train_transform = Compose([
         transforms.ShiftScaleRotate(
@@ -389,9 +377,9 @@ def main():
             print('Epoch [%d/%d]' % (epoch + 1, config['epochs']))
 
             # train for one epoch
-            train_loss = train(config, train_loader, model, criterion, optimizer, epoch)
+            train_loss = train(config, heads, train_loader, model, criterion, optimizer, epoch)
             # evaluate on validation set
-            val_loss = validate(config, val_loader, model, criterion)
+            val_loss = validate(config, heads, val_loader, model, criterion)
 
             if config['scheduler'] == 'CosineAnnealingLR':
                 scheduler.step()

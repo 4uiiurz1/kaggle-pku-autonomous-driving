@@ -4,18 +4,18 @@ import json
 
 import numpy as np
 import cv2
+from scipy.spatial.transform import Rotation as R
 
 import torch
 
 from .utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian
 from .utils.image import draw_dense_reg
-from .utils.utils import convert_2d_to_3d, convert_3d_to_2d
-from .utils.utils import convert_euler_to_quaternion, rotate
+from .utils.utils import convert_2d_to_3d, convert_3d_to_2d, rotate
 
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, img_paths, mask_paths, labels, input_w=640, input_h=512,
-                 down_ratio=4, transform=None):
+                 down_ratio=4, transform=None, test=False):
         self.img_paths = img_paths
         self.mask_paths = mask_paths
         self.labels = labels
@@ -26,8 +26,9 @@ class Dataset(torch.utils.data.Dataset):
         self.output_w = self.input_w // self.down_ratio
         self.output_h = self.input_h // self.down_ratio
         self.max_objs = 100
-        self.mean=np.array([0.485, 0.456, 0.406], dtype='float32').reshape(1, 1, 3)
-        self.std=np.array([0.229, 0.224, 0.225], dtype='float32').reshape(1, 1, 3)
+        self.mean = np.array([0.485, 0.456, 0.406], dtype='float32').reshape(1, 1, 3)
+        self.std = np.array([0.229, 0.224, 0.225], dtype='float32').reshape(1, 1, 3)
+        self.test = test
 
     def __getitem__(self, index):
         img_path, mask_path, label = self.img_paths[index], self.mask_paths[index], self.labels[index]
@@ -43,6 +44,19 @@ class Dataset(torch.utils.data.Dataset):
             mask = 1 - mask.astype('float32') / 255
         else:
             mask = np.ones((self.output_h, self.output_w), dtype='float32')
+
+        if self.test:
+            img = img.astype('float32') / 255
+            img = (img - self.mean) / self.std
+            img = img.transpose(2, 0, 1)
+
+            mask = mask[None, ...]
+
+            return {
+                'img_path': img_path,
+                'input': img,
+                'mask': mask,
+            }
 
         kpts = []
         for k in range(num_objs):
@@ -113,22 +127,21 @@ class Dataset(torch.utils.data.Dataset):
             trig[4, ct_int[1], ct_int[0]] = math.cos(rotate(roll, np.pi))
             trig[5, ct_int[1], ct_int[0]] = math.sin(rotate(roll, np.pi))
 
-            qx, qy, qz, qw = convert_euler_to_quaternion(yaw, pitch, roll)
+            qx, qy, qz, qw = (R.from_euler('xyz', [yaw, pitch, roll])).as_quat()
             quat[0, ct_int[1], ct_int[0]] = qx
             quat[1, ct_int[1], ct_int[0]] = qy
             quat[2, ct_int[1], ct_int[0]] = qz
             quat[3, ct_int[1], ct_int[0]] = qw
 
-            gt[k, 0] = 1
-            gt[k, 1] = ann['yaw']
-            gt[k, 2] = ann['pitch']
-            gt[k, 3] = ann['roll']
-            gt[k, 4:6] = convert_2d_to_3d(ann['x'] * width / self.input_w, ann['y'] * height / self.input_h, ann['z'])
-            gt[k, 6] = ann['z']
+            gt[k, 0] = ann['yaw']
+            gt[k, 1] = ann['pitch']
+            gt[k, 2] = ann['roll']
+            gt[k, 3:5] = convert_2d_to_3d(ann['x'] * width / self.input_w, ann['y'] * height / self.input_h, ann['z'])
+            gt[k, 5] = ann['z']
+            gt[k, 6] = 1
 
         ret = {
             'img_path': img_path,
-            'label': label,
             'input': img,
             'mask': mask,
             'label': label,

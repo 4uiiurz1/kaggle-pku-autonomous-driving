@@ -1,126 +1,158 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import _init_paths
-
-import os
-import json
-import cv2
-import numpy as np
 import time
-from progress.bar import Bar
+import os
+import math
+import argparse
+from glob import glob
+from collections import OrderedDict
+import random
+import warnings
+from datetime import datetime
+
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import pandas as pd
+import joblib
+import cv2
+import yaml
+
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from skimage.io import imread
+
+from apex import amp
+
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.autograd import Variable
+import torch.optim as optim
+from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
+import torch.backends.cudnn as cudnn
+import torchvision
 
-from external.nms import soft_nms
-from opts import opts
-from logger import Logger
-from utils.utils import AverageMeter
-from datasets.dataset_factory import dataset_factory
-from detectors.detector_factory import detector_factory
+from lib.datasets import Dataset
+from lib.utils.utils import *
+from lib.models import resnet_fpn
+from lib.optimizers import RAdam
+from lib import losses
+from lib.decodes import decode
 
-class PrefetchDataset(torch.utils.data.Dataset):
-  def __init__(self, opt, dataset, pre_process_func):
-    self.images = dataset.images
-    self.load_image_func = dataset.coco.loadImgs
-    self.img_dir = dataset.img_dir
-    self.pre_process_func = pre_process_func
-    self.opt = opt
-  
-  def __getitem__(self, index):
-    img_id = self.images[index]
-    img_info = self.load_image_func(ids=[img_id])[0]
-    img_path = os.path.join(self.img_dir, img_info['file_name'])
-    image = cv2.imread(img_path)
-    images, meta = {}, {}
-    for scale in opt.test_scales:
-      if opt.task == 'ddd':
-        images[scale], meta[scale] = self.pre_process_func(
-          image, scale, img_info['calib'])
-      else:
-        images[scale], meta[scale] = self.pre_process_func(image, scale)
-    return img_id, {'images': images, 'image': image, 'meta': meta}
 
-  def __len__(self):
-    return len(self.images)
+def parse_args():
+    parser = argparse.ArgumentParser()
 
-def prefetch_test(opt):
-  os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
+    parser.add_argument('--name', default=None)
+    parser.add_argument('--score_th', default=0.9, type=float)
+    parser.add_argument('--show', action='store_true')
 
-  Dataset = dataset_factory[opt.dataset]
-  opt = opts().update_dataset_info_and_set_heads(opt, Dataset)
-  print(opt)
-  Logger(opt)
-  Detector = detector_factory[opt.task]
-  
-  split = 'val' if not opt.trainval else 'test'
-  dataset = Dataset(opt, split)
-  detector = Detector(opt)
-  
-  data_loader = torch.utils.data.DataLoader(
-    PrefetchDataset(opt, dataset, detector.pre_process), 
-    batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
+    args = parser.parse_args()
 
-  results = {}
-  num_iters = len(dataset)
-  bar = Bar('{}'.format(opt.exp_id), max=num_iters)
-  time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge']
-  avg_time_stats = {t: AverageMeter() for t in time_stats}
-  for ind, (img_id, pre_processed_images) in enumerate(data_loader):
-    ret = detector.run(pre_processed_images)
-    results[img_id.numpy().astype(np.int32)[0]] = ret['results']
-    Bar.suffix = '[{0}/{1}]|Tot: {total:} |ETA: {eta:} '.format(
-                   ind, num_iters, total=bar.elapsed_td, eta=bar.eta_td)
-    for t in avg_time_stats:
-      avg_time_stats[t].update(ret[t])
-      Bar.suffix = Bar.suffix + '|{} {tm.val:.3f}s ({tm.avg:.3f}s) '.format(
-        t, tm = avg_time_stats[t])
-    bar.next()
-  bar.finish()
-  dataset.run_eval(results, opt.save_dir)
+    return args
 
-def test(opt):
-  os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
 
-  Dataset = dataset_factory[opt.dataset]
-  opt = opts().update_dataset_info_and_set_heads(opt, Dataset)
-  print(opt)
-  Logger(opt)
-  Detector = detector_factory[opt.task]
-  
-  split = 'val' if not opt.trainval else 'test'
-  dataset = Dataset(opt, split)
-  detector = Detector(opt)
+def main():
+    args = parse_args()
 
-  results = {}
-  num_iters = len(dataset)
-  bar = Bar('{}'.format(opt.exp_id), max=num_iters)
-  time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge']
-  avg_time_stats = {t: AverageMeter() for t in time_stats}
-  for ind in range(num_iters):
-    img_id = dataset.images[ind]
-    img_info = dataset.coco.loadImgs(ids=[img_id])[0]
-    img_path = os.path.join(dataset.img_dir, img_info['file_name'])
+    with open('models/%s/config.yaml' % args.name, 'r') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
 
-    if opt.task == 'ddd':
-      ret = detector.run(img_path, img_info['calib'])
+    print('-'*20)
+    for key in config.keys():
+        print('%s: %s' % (key, str(config[key])))
+    print('-'*20)
+
+    cudnn.benchmark = True
+
+    df = pd.read_csv('inputs/sample_submission.csv')
+    img_paths = np.array('inputs/test_images/' + df['ImageId'].values + '.jpg')
+    mask_paths = np.array('inputs/test_masks/' + df['ImageId'].values + '.jpg')
+    labels = np.array([convert_str_to_labels(s, names=['yaw', 'pitch', 'roll',
+                       'x', 'y', 'z', 'score']) for s in df['PredictionString']])
+
+    test_set = Dataset(
+        img_paths,
+        mask_paths,
+        labels,
+        transform=None,
+        test=True)
+    test_loader = torch.utils.data.DataLoader(
+        test_set,
+        batch_size=1,
+        shuffle=False,
+        num_workers=config['num_workers'],
+        # pin_memory=True,
+    )
+
+    heads = OrderedDict([
+        ('hm', 1),
+        ('reg', 2),
+        ('depth', 1),
+    ])
+
+    if config['rot'] == 'eular':
+        heads['eular'] = 3
+    elif config['rot'] == 'trig':
+        heads['trig'] = 6
+    elif config['rot'] == 'quat':
+        heads['quat'] = 4
     else:
-      ret = detector.run(img_path)
-    
-    results[img_id] = ret['results']
+        raise NotImplementedError
 
-    Bar.suffix = '[{0}/{1}]|Tot: {total:} |ETA: {eta:} '.format(
-                   ind, num_iters, total=bar.elapsed_td, eta=bar.eta_td)
-    for t in avg_time_stats:
-      avg_time_stats[t].update(ret[t])
-      Bar.suffix = Bar.suffix + '|{} {:.3f} '.format(t, avg_time_stats[t].avg)
-    bar.next()
-  bar.finish()
-  dataset.run_eval(results, opt.save_dir)
+    preds = []
+    for fold in range(config['n_splits']):
+        print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
+
+        model = resnet_fpn.ResNetFPN(backbone='resnet18', heads=heads)
+        model = model.cuda()
+
+        model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
+        if not os.path.exists(model_path):
+            print('%s is not exists.' %model_path)
+            continue
+        model.load_state_dict(torch.load(model_path))
+
+        model.eval()
+
+        preds_fold = []
+        with torch.no_grad():
+            pbar = tqdm(total=len(test_loader))
+            for i, batch in enumerate(test_loader):
+                input = batch['input'].cuda()
+                mask = batch['mask'].cuda()
+
+                output = model(input)
+
+                if config['rot'] == 'eular':
+                    dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
+                elif config['rot'] == 'trig':
+                    dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
+                elif config['rot'] == 'quat':
+                    dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
+                dets = dets.detach().cpu().numpy()
+
+                for k, det in enumerate(dets):
+                    preds_fold.append(convert_labels_to_str(det[det[:, -1] > args.score_th]))
+
+                    if args.show and len(det[det[:, -1] > args.score_th]) != 0:
+                        img = cv2.imread(batch['img_path'][k])
+                        img_pred = visualize(img, det[det[:, -1] > args.score_th])
+                        plt.imshow(img_pred)
+                        plt.show()
+
+                pbar.update(1)
+            pbar.close()
+
+        df['PredictionString'] = preds_fold
+        df.to_csv('submissions/%s_%d_%.2f.csv' %(args.name, fold + 1, args.score_th), index=False)
+        print(df.head())
+
+        torch.cuda.empty_cache()
+
+        if not config['cv']:
+            break
+
 
 if __name__ == '__main__':
-  opt = opts().parse()
-  if opt.not_prefetch_test:
-    test(opt)
-  else:
-    prefetch_test(opt)
+    main()
