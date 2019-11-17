@@ -105,8 +105,6 @@ def main():
         train_mask_paths, val_mask_paths = mask_paths[train_idx], mask_paths[val_idx]
         train_labels, val_labels = labels[train_idx], labels[val_idx]
 
-        print(val_labels)
-
         val_set = Dataset(
             val_img_paths,
             val_mask_paths,

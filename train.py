@@ -43,6 +43,7 @@ from lib.models import resnet_fpn
 from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
+from lib.transforms import PoseHorizontalFlip
 
 
 def parse_args():
@@ -97,6 +98,8 @@ def parse_args():
     parser.add_argument('--n_splits', default=5, type=int)
 
     # augmentation
+    parser.add_argument('--hflip', default=True, type=str2bool)
+    parser.add_argument('--hflip_p', default=0.5, type=float)
     parser.add_argument('--shift_scale_rotate', default=True, type=str2bool)
     parser.add_argument('--shift_scale_rotate_p', default=0.5, type=float)
     parser.add_argument('--shift_limit', default=0.1, type=float)
@@ -261,10 +264,6 @@ def main():
             value=0,
             p=config['shift_scale_rotate_p']
         ) if config['shift_scale_rotate'] else NoOp(),
-        # transforms.RandomContrast(
-        #     limit=args.contrast_limit,
-        #     p=args.contrast_p
-        # ) if args.contrast else NoOp(),
     ], keypoint_params=KeypointParams(format='xy', remove_invisible=False))
 
     val_transform = None
@@ -297,7 +296,8 @@ def main():
             train_labels,
             input_w=config['input_w'],
             input_h=config['input_h'],
-            transform=train_transform)
+            transform=train_transform,
+            hflip=config['hflip_p'] if config['hflip'] else 0)
         train_loader = torch.utils.data.DataLoader(
             train_set,
             batch_size=config['batch_size'],

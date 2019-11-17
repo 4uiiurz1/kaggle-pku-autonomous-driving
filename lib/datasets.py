@@ -15,7 +15,7 @@ from .utils.utils import convert_2d_to_3d, convert_3d_to_2d, rotate
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, img_paths, mask_paths, labels, input_w=640, input_h=512,
-                 down_ratio=4, transform=None, test=False):
+                 down_ratio=4, transform=None, hflip=0, test=False):
         self.img_paths = img_paths
         self.mask_paths = mask_paths
         self.labels = labels
@@ -23,6 +23,7 @@ class Dataset(torch.utils.data.Dataset):
         self.input_h = input_h
         self.down_ratio = down_ratio
         self.transform = transform
+        self.hflip = hflip
         self.output_w = self.input_w // self.down_ratio
         self.output_h = self.input_h // self.down_ratio
         self.max_objs = 100
@@ -59,11 +60,20 @@ class Dataset(torch.utils.data.Dataset):
             }
 
         kpts = []
+        poses = []
         for k in range(num_objs):
             ann = label[k]
             kpts.append([ann['x'], ann['y'], ann['z']])
+            poses.append([ann['yaw'], ann['pitch'], ann['roll']])
         kpts = np.array(kpts)
-        zs = kpts[:, 2]
+        poses = np.array(poses)
+
+        if np.random.random() < self.hflip:
+            img = img[:, ::-1].copy()
+            mask = mask[:, ::-1].copy()
+            kpts[:, 0] *= -1
+            poses[:, [0, 2]] *= -1
+
         kpts = np.array(convert_3d_to_2d(kpts[:, 0], kpts[:, 1], kpts[:, 2])).T
         kpts[:, 0] *= self.input_w / width
         kpts[:, 1] *= self.input_h / height
@@ -74,9 +84,12 @@ class Dataset(torch.utils.data.Dataset):
             mask = data['mask']
             kpts = data['keypoints']
 
-        for k, (x, y) in enumerate(kpts):
+        for k, ((x, y), (yaw, pitch, roll)) in enumerate(zip(kpts, poses)):
             label[k]['x'] = x
             label[k]['y'] = y
+            label[k]['yaw'] = yaw
+            label[k]['pitch'] = pitch
+            label[k]['roll'] = roll
 
         img = img.astype('float32') / 255
         img = (img - self.mean) / self.std
@@ -156,11 +169,14 @@ class Dataset(torch.utils.data.Dataset):
         }
 
         # import matplotlib.pyplot as plt
-        # plt.subplot(121)
-        # plt.imshow((img.transpose((1, 2, 0)) * self.std + self.mean))
-        # plt.subplot(122)
-        # plt.imshow(ret['hm'][0])
-        # plt.colorbar()
+        # from .utils.vis import visualize
+        # from .decodes import decode
+        # gt = ret['gt']
+        #
+        # img = cv2.imread(ret['img_path'])[:, ::-1]
+        # img_gt = visualize(img, gt[gt[:, -1] > 0])
+        #
+        # plt.imshow(img_gt)
         # plt.show()
 
         return ret

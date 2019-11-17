@@ -37,7 +37,7 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def convert_str_to_labels(s, names=['model_type', 'yaw', 'pitch', 'roll', 'x', 'y', 'z']):
+def convert_str_to_labels(s, names=['model_type', 'pitch', 'yaw', 'roll', 'x', 'y', 'z']):
     labels = []
     for l in np.array(s.split()).reshape([-1, 7]):
         labels.append(dict(zip(names, l.astype('float'))))

@@ -124,13 +124,13 @@ def calc_map(infile, nrows=None):
         abs_dist = False
         result_flg, scores = check_match(valid_df, train_df, thre_tr_dist, thre_ro_dist)
         n_tp = np.sum(result_flg)
-        recall = n_tp/n_gt
+        recall = n_tp / n_gt
         ap = average_precision_score(result_flg, scores)*recall
         ap_list.append(ap)
     return np.mean(ap_list)
 
 
-map = calc_map('preds/resnet18_fpn_111600_0.30.csv', nrows=None)
+map = calc_map('preds/resnet18_fpn_111718_0.30.csv', nrows=None)
 print('map:', map)
 #
 #
