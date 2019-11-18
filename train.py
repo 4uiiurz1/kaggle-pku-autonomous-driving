@@ -43,7 +43,6 @@ from lib.models import resnet_fpn
 from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
-from lib.transforms import PoseHorizontalFlip
 
 
 def parse_args():

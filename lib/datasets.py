@@ -114,7 +114,17 @@ class Dataset(torch.utils.data.Dataset):
             if x < 0 or y < 0 or x > self.output_w or y > self.output_h:
                 continue
 
-            radius = 3  # TODO: make variable according to object size
+            radius = gaussian_radius(
+                ann['yaw'],
+                ann['pitch'],
+                ann['roll'],
+                *convert_2d_to_3d(ann['x'] * width / self.input_w, ann['y'] * height / self.input_h, ann['z']),
+                ann['z'],
+                width,
+                height,
+                self.output_w,
+                self.output_h)
+            radius = int(radius)
 
             ct = np.array([x, y], dtype=np.float32)
             ct_int = ct.astype(np.int32)
@@ -167,16 +177,9 @@ class Dataset(torch.utils.data.Dataset):
             'quat': quat,
             'gt': gt,
         }
-
+        
         # import matplotlib.pyplot as plt
-        # from .utils.vis import visualize
-        # from .decodes import decode
-        # gt = ret['gt']
-        #
-        # img = cv2.imread(ret['img_path'])[:, ::-1]
-        # img_gt = visualize(img, gt[gt[:, -1] > 0])
-        #
-        # plt.imshow(img_gt)
+        # plt.imshow(ret['hm'][0])
         # plt.show()
 
         return ret

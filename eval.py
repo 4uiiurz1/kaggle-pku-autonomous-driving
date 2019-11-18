@@ -130,7 +130,7 @@ def calc_map(infile, nrows=None):
     return np.mean(ap_list)
 
 
-map = calc_map('preds/resnet18_fpn_111718_0.30.csv', nrows=None)
+map = calc_map('preds/resnet18_fpn_111820_0.10.csv', nrows=None)
 print('map:', map)
 #
 #
