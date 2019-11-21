@@ -58,6 +58,7 @@ def visualize(img, labels):
             [-x_l,  y_l, -z_l, 1],
             [-x_l,  y_l,  z_l, 1],
             [ x_l,  y_l,  z_l, 1],
+            [x_l,   y_l, -z_l, 1],
 
             [0,       0,    0, 1]]).T
         P = Rt @  P

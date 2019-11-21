@@ -33,13 +33,13 @@ import torch.backends.cudnn as cudnn
 import torchvision
 
 from albumentations.augmentations import transforms
-from albumentations.core.composition import Compose, KeypointParams
+from albumentations.core.composition import Compose, OneOf, KeypointParams
 from albumentations.pytorch.transforms import ToTensor
 from albumentations.core.transforms_interface import NoOp
 
 from lib.datasets import Dataset
 from lib.utils.utils import *
-from lib.models import resnet_fpn
+from lib.models.model_factory import get_model
 from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
@@ -102,7 +102,20 @@ def parse_args():
     parser.add_argument('--shift_scale_rotate', default=True, type=str2bool)
     parser.add_argument('--shift_scale_rotate_p', default=0.5, type=float)
     parser.add_argument('--shift_limit', default=0.1, type=float)
-    parser.add_argument('--scale_limit', default=0.1, type=float)
+    parser.add_argument('--scale_limit', default=0, type=float)
+    parser.add_argument('--hsv', default=True, type=str2bool)
+    parser.add_argument('--hsv_p', default=0.5, type=float)
+    parser.add_argument('--hue_limit', default=20, type=int)
+    parser.add_argument('--sat_limit', default=0, type=int)
+    parser.add_argument('--val_limit', default=0, type=int)
+    parser.add_argument('--brightness', default=True, type=str2bool)
+    parser.add_argument('--brightness_p', default=0.5, type=float)
+    parser.add_argument('--brightness_limit', default=0.2, type=float)
+    parser.add_argument('--contrast', default=True, type=str2bool)
+    parser.add_argument('--contrast_p', default=0.5, type=float)
+    parser.add_argument('--contrast_limit', default=0.2, type=float)
+    parser.add_argument('--iso_noise', default=False, type=str2bool)
+    parser.add_argument('--iso_noise_p', default=0.5, type=float)
 
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--resume', action='store_true')
@@ -263,6 +276,25 @@ def main():
             value=0,
             p=config['shift_scale_rotate_p']
         ) if config['shift_scale_rotate'] else NoOp(),
+        OneOf([
+            transforms.HueSaturationValue(
+                hue_shift_limit=config['hue_limit'],
+                sat_shift_limit=config['sat_limit'],
+                val_shift_limit=config['val_limit'],
+                p=config['hsv_p']
+            ) if config['hsv'] else NoOp(),
+            transforms.RandomBrightness(
+                limit=config['brightness_limit'],
+                p=config['brightness_p'],
+            ) if config['brightness'] else NoOp(),
+            transforms.RandomContrast(
+                limit=config['contrast_limit'],
+                p=config['contrast_p'],
+            ) if config['contrast'] else NoOp(),
+        ], p=1),
+        transforms.ISONoise(
+            p=config['iso_noise_p']
+        ) if config['iso_noise'] else NoOp(),
     ], keypoint_params=KeypointParams(format='xy', remove_invisible=False))
 
     val_transform = None
@@ -321,7 +353,7 @@ def main():
         )
 
         # create model
-        model = resnet_fpn.ResNetFPN(backbone='resnet18', heads=heads)
+        model = get_model(config['arch'], heads=heads)
         model = model.cuda()
         # print(model)
 

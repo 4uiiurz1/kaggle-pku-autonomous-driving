@@ -8,7 +8,8 @@ from scipy.spatial.transform import Rotation as R
 
 import torch
 
-from .utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian
+from .utils.image import get_bbox, gaussian_radius
+from .utils.image import draw_umich_gaussian, draw_msra_gaussian
 from .utils.image import draw_dense_reg
 from .utils.utils import convert_2d_to_3d, convert_3d_to_2d, rotate
 
@@ -114,7 +115,7 @@ class Dataset(torch.utils.data.Dataset):
             if x < 0 or y < 0 or x > self.output_w or y > self.output_h:
                 continue
 
-            radius = gaussian_radius(
+            bbox = get_bbox(
                 ann['yaw'],
                 ann['pitch'],
                 ann['roll'],
@@ -124,7 +125,9 @@ class Dataset(torch.utils.data.Dataset):
                 height,
                 self.output_w,
                 self.output_h)
-            radius = int(radius)
+            h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
+            radius = gaussian_radius((math.ceil(h), math.ceil(w)))
+            radius = max(0, int(radius))
 
             ct = np.array([x, y], dtype=np.float32)
             ct_int = ct.astype(np.int32)
@@ -177,7 +180,7 @@ class Dataset(torch.utils.data.Dataset):
             'quat': quat,
             'gt': gt,
         }
-        
+
         # import matplotlib.pyplot as plt
         # plt.imshow(ret['hm'][0])
         # plt.show()

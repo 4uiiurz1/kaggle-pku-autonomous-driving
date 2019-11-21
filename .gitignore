@@ -7,4 +7,5 @@ models/*
 submissions/*
 preds/*
 notebooks/*
+pretrained_weights/*
 *.bat

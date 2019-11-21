@@ -34,17 +34,18 @@ import torchvision
 
 from lib.datasets import Dataset
 from lib.utils.utils import *
-from lib.models import resnet_fpn
+from lib.models.model_factory import get_model
 from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
+from lib.utils.vis import visualize
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--name', default=None)
-    parser.add_argument('--score_th', default=0.9, type=float)
+    parser.add_argument('--score_th', default=0.6, type=float)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -79,7 +80,7 @@ def main():
         test=True)
     test_loader = torch.utils.data.DataLoader(
         test_set,
-        batch_size=1,
+        batch_size=config['batch_size'],
         shuffle=False,
         num_workers=config['num_workers'],
         # pin_memory=True,
@@ -104,7 +105,7 @@ def main():
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
-        model = resnet_fpn.ResNetFPN(backbone='resnet18', heads=heads)
+        model = get_model(config['arch'], heads=heads)
         model = model.cuda()
 
         model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)

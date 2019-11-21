@@ -99,9 +99,8 @@ def euler_to_Rot(yaw, pitch, roll):
     return np.dot(Y, np.dot(P, R))
 
 
-def gaussian_radius(yaw, pitch, roll, x, y, z,
-                    width, height, output_w, output_h,
-                    min_overlap=0.7):
+def get_bbox(yaw, pitch, roll, x, y, z,
+             width, height, output_w, output_h):
     Rt = np.eye(4)
     t = np.array([x, y, z])
     Rt[:3, 3] = t
@@ -118,27 +117,37 @@ def gaussian_radius(yaw, pitch, roll, x, y, z,
     P = Rt @  P
     P = P.T
     xs, ys = convert_3d_to_2d(P[:, 0], P[:, 1], P[:, 2])
+    bbox = [xs.min(), ys.min(), xs.max(), ys.max()]
 
-    width = math.ceil((xs.max() - xs.min()) * output_w / width)
-    height = math.ceil((ys.max() - ys.min()) * output_h / height)
+    bbox[0] *= output_w / width
+    bbox[1] *= output_h / height
+    bbox[2] *= output_w / width
+    bbox[3] *= output_h / height
 
-    a1 = 1
-    b1 = (height + width)
-    c1 = width * height * (1 - min_overlap) / (1 + min_overlap)
+    return bbox
+
+
+def gaussian_radius(det_size, min_overlap=0.7):
+    height, width = det_size
+
+    a1  = 1
+    b1  = (height + width)
+    c1  = width * height * (1 - min_overlap) / (1 + min_overlap)
     sq1 = np.sqrt(b1 ** 2 - 4 * a1 * c1)
-    r1 = (b1 + sq1) / 2
+    r1  = (b1 + sq1) / 2
 
-    a2 = 4
-    b2 = 2 * (height + width)
-    c2 = (1 - min_overlap) * width * height
+    a2  = 4
+    b2  = 2 * (height + width)
+    c2  = (1 - min_overlap) * width * height
     sq2 = np.sqrt(b2 ** 2 - 4 * a2 * c2)
-    r2 = (b2 + sq2) / 2
+    r2  = (b2 + sq2) / 2
 
-    a3 = 4 * min_overlap
-    b3 = -2 * min_overlap * (height + width)
-    c3 = (min_overlap - 1) * width * height
+    a3  = 4 * min_overlap
+    b3  = -2 * min_overlap * (height + width)
+    c3  = (min_overlap - 1) * width * height
     sq3 = np.sqrt(b3 ** 2 - 4 * a3 * c3)
-    r3 = (b3 + sq3) / 2
+    r3  = (b3 + sq3) / 2
+
     return min(r1, r2, r3)
 
 
@@ -225,44 +234,3 @@ def draw_msra_gaussian(heatmap, center, sigma):
         heatmap[img_y[0]:img_y[1], img_x[0]:img_x[1]],
         g[g_y[0]:g_y[1], g_x[0]:g_x[1]])
     return heatmap
-
-
-def grayscale(image):
-    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-
-def lighting_(data_rng, image, alphastd, eigval, eigvec):
-    alpha = data_rng.normal(scale=alphastd, size=(3, ))
-    image += np.dot(eigvec, eigval * alpha)
-
-
-def blend_(alpha, image1, image2):
-    image1 *= alpha
-    image2 *= (1 - alpha)
-    image1 += image2
-
-
-def saturation_(data_rng, image, gs, gs_mean, var):
-    alpha = 1. + data_rng.uniform(low=-var, high=var)
-    blend_(alpha, image, gs[:, :, None])
-
-
-def brightness_(data_rng, image, gs, gs_mean, var):
-    alpha = 1. + data_rng.uniform(low=-var, high=var)
-    image *= alpha
-
-
-def contrast_(data_rng, image, gs, gs_mean, var):
-    alpha = 1. + data_rng.uniform(low=-var, high=var)
-    blend_(alpha, image, gs_mean)
-
-
-def color_aug(data_rng, image, eig_val, eig_vec):
-    functions = [brightness_, contrast_, saturation_]
-    random.shuffle(functions)
-
-    gs = grayscale(image)
-    gs_mean = gs.mean()
-    for f in functions:
-        f(data_rng, image, gs, gs_mean, 0.4)
-    lighting_(data_rng, image, 0.1, eig_val, eig_vec)
