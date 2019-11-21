@@ -55,7 +55,6 @@ def parse_args():
     parser.add_argument('-b', '--batch_size', default=8, type=int,
                         metavar='N', help='mini-batch size (default: 8)')
 
-
     # model
     parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18_fpn',
                         help='model architecture: (default: resnet18_fpn)')
@@ -99,10 +98,12 @@ def parse_args():
     # augmentation
     parser.add_argument('--hflip', default=True, type=str2bool)
     parser.add_argument('--hflip_p', default=0.5, type=float)
-    parser.add_argument('--shift_scale_rotate', default=True, type=str2bool)
-    parser.add_argument('--shift_scale_rotate_p', default=0.5, type=float)
+    parser.add_argument('--shift', default=True, type=str2bool)
+    parser.add_argument('--shift_p', default=0.5, type=float)
     parser.add_argument('--shift_limit', default=0.1, type=float)
-    parser.add_argument('--scale_limit', default=0, type=float)
+    parser.add_argument('--scale', default=True, type=str2bool)
+    parser.add_argument('--scale_p', default=0.5, type=float)
+    parser.add_argument('--scale_limit', default=0.1, type=float)
     parser.add_argument('--hsv', default=True, type=str2bool)
     parser.add_argument('--hsv_p', default=0.5, type=float)
     parser.add_argument('--hue_limit', default=20, type=int)
@@ -226,7 +227,7 @@ def main():
         os.makedirs('models/%s' % config['name'])
 
     if config['resume']:
-        with open('models/%s/config.yaml' % test_args.name, 'r') as f:
+        with open('models/%s/config.yaml' % config['name'], 'r') as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         config['resume'] = True
 
@@ -270,12 +271,12 @@ def main():
     train_transform = Compose([
         transforms.ShiftScaleRotate(
             shift_limit=config['shift_limit'],
-            scale_limit=config['scale_limit'],
+            scale_limit=0,
             rotate_limit=0,
             border_mode=cv2.BORDER_CONSTANT,
             value=0,
-            p=config['shift_scale_rotate_p']
-        ) if config['shift_scale_rotate'] else NoOp(),
+            p=config['shift_p']
+        ) if config['shift'] else NoOp(),
         OneOf([
             transforms.HueSaturationValue(
                 hue_shift_limit=config['hue_limit'],
@@ -328,7 +329,9 @@ def main():
             input_w=config['input_w'],
             input_h=config['input_h'],
             transform=train_transform,
-            hflip=config['hflip_p'] if config['hflip'] else 0)
+            hflip=config['hflip_p'] if config['hflip'] else 0,
+            scale=config['scale_p'] if config['scale'] else 0,
+            scale_limit=config['scale_limit'])
         train_loader = torch.utils.data.DataLoader(
             train_set,
             batch_size=config['batch_size'],
@@ -401,7 +404,7 @@ def main():
             optimizer.load_state_dict(checkpoint['optimizer'])
             scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
-            log = pd.read_csv('models/%s/log_%d.csv' % (args.name, fold+1)).to_dict(orient='list')
+            log = pd.read_csv('models/%s/log_%d.csv' % (config['name'], fold+1)).to_dict(orient='list')
             best_loss = checkpoint['best_loss']
 
         for epoch in range(start_epoch, config['epochs']):

@@ -18,7 +18,7 @@ def euler_to_Rot(yaw, pitch, roll):
     return np.dot(Y, np.dot(P, R))
 
 
-def visualize(img, labels):
+def visualize(img, labels, scale_w=1, scale_h=1):
     x_l = 1.02
     y_l = 0.80
     z_l = 2.31
@@ -65,10 +65,12 @@ def visualize(img, labels):
         P = P.T
 
         xs, ys = convert_3d_to_2d(P[:, 0], P[:, 1], P[:, 2])
+        xs *= scale_w
+        ys *= scale_h
         pts = np.hstack((xs[:, None], ys[:, None])).astype('int')
         pts = pts.reshape((-1, 1, 2))
 
         cv2.polylines(img, [pts[:-1]], False, (44, 160, 44), 4)
-        # cv2.circle(img, tuple(pts[-1, 0]), int(1000 / P[-1, 2]), (180, 119, 31), -1)
+        cv2.circle(img, tuple(pts[-1, 0]), int(1000 / P[-1, 2]), (180, 119, 31), -1)
 
     return img

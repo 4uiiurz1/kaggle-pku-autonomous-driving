@@ -5,18 +5,23 @@ import json
 import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation as R
+import matplotlib.pyplot as plt
 
 import torch
+
+from albumentations.augmentations import functional as F
 
 from .utils.image import get_bbox, gaussian_radius
 from .utils.image import draw_umich_gaussian, draw_msra_gaussian
 from .utils.image import draw_dense_reg
 from .utils.utils import convert_2d_to_3d, convert_3d_to_2d, rotate
+from .utils.vis import visualize
 
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, img_paths, mask_paths, labels, input_w=640, input_h=512,
-                 down_ratio=4, transform=None, hflip=0, test=False):
+                 down_ratio=4, transform=None, test=False, hflip=0,
+                 scale=0, scale_limit=0):
         self.img_paths = img_paths
         self.mask_paths = mask_paths
         self.labels = labels
@@ -24,13 +29,15 @@ class Dataset(torch.utils.data.Dataset):
         self.input_h = input_h
         self.down_ratio = down_ratio
         self.transform = transform
+        self.test = test
         self.hflip = hflip
+        self.scale = scale
+        self.scale_limit = scale_limit
         self.output_w = self.input_w // self.down_ratio
         self.output_h = self.input_h // self.down_ratio
         self.max_objs = 100
         self.mean = np.array([0.485, 0.456, 0.406], dtype='float32').reshape(1, 1, 3)
         self.std = np.array([0.229, 0.224, 0.225], dtype='float32').reshape(1, 1, 3)
-        self.test = test
 
     def __getitem__(self, index):
         img_path, mask_path, label = self.img_paths[index], self.mask_paths[index], self.labels[index]
@@ -74,6 +81,12 @@ class Dataset(torch.utils.data.Dataset):
             mask = mask[:, ::-1].copy()
             kpts[:, 0] *= -1
             poses[:, [0, 2]] *= -1
+
+        if np.random.random() < self.scale:
+            scale = np.random.uniform(-self.scale_limit, self.scale_limit) + 1.0
+            img = F.shift_scale_rotate(img, angle=0, scale=scale, dx=0, dy=0)
+            mask = F.shift_scale_rotate(mask, angle=0, scale=scale, dx=0, dy=0)
+            kpts[:, 2] /= scale
 
         kpts = np.array(convert_3d_to_2d(kpts[:, 0], kpts[:, 1], kpts[:, 2])).T
         kpts[:, 0] *= self.input_w / width
@@ -181,8 +194,11 @@ class Dataset(torch.utils.data.Dataset):
             'gt': gt,
         }
 
-        # import matplotlib.pyplot as plt
         # plt.imshow(ret['hm'][0])
+        # plt.show()
+        # img = visualize(((img.transpose(1, 2, 0) * self.std + self.mean) * 255).astype('uint8'),
+        #                 gt[gt[:, -1] > 0], scale_w=self.input_w / width, scale_h=self.input_h / height)
+        # plt.imshow(img)
         # plt.show()
 
         return ret
