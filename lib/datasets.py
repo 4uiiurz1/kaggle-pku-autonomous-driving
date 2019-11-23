@@ -114,6 +114,7 @@ class Dataset(torch.utils.data.Dataset):
         hm = np.zeros((1, self.output_h, self.output_w), dtype=np.float32)
         reg_mask = np.zeros((1, self.output_h, self.output_w), dtype=np.float32)
         reg = np.zeros((2, self.output_h, self.output_w), dtype=np.float32)
+        wh = np.zeros((2, self.output_h, self.output_w), dtype=np.float32)
         depth = np.zeros((1, self.output_h, self.output_w), dtype=np.float32)
         eular = np.zeros((3, self.output_h, self.output_w), dtype=np.float32)
         trig = np.zeros((6, self.output_h, self.output_w), dtype=np.float32)
@@ -149,6 +150,8 @@ class Dataset(torch.utils.data.Dataset):
 
             reg_mask[0, ct_int[1], ct_int[0]] = 1
             reg[:, ct_int[1], ct_int[0]] = ct - ct_int
+            wh[0, ct_int[1], ct_int[0]] = w
+            wh[1, ct_int[1], ct_int[0]] = h
             depth[0, ct_int[1], ct_int[0]] = ann['z']
 
             yaw = ann['yaw']
@@ -187,6 +190,7 @@ class Dataset(torch.utils.data.Dataset):
             'hm': hm,
             'reg_mask': reg_mask,
             'reg': reg,
+            'wh': wh,
             'depth': depth,
             'eular': eular,
             'trig': trig,

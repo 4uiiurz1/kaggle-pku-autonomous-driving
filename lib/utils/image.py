@@ -100,19 +100,20 @@ def euler_to_Rot(yaw, pitch, roll):
 
 
 def get_bbox(yaw, pitch, roll, x, y, z,
-             width, height, output_w, output_h):
+             width, height, output_w, output_h,
+             car_hw=1.02, car_hh=0.80, car_hl=2.31):
     Rt = np.eye(4)
     t = np.array([x, y, z])
     Rt[:3, 3] = t
     Rt[:3, :3] = euler_to_Rot(-yaw, -pitch, -roll).T
     Rt = Rt[:3, :]
     P = np.array([
-        [-1.02,     0,     0, 1],
-        [ 1.02,     0,     0, 1],
-        [    0,  0.80,     0, 1],
-        [    0, -0.80,     0, 1],
-        [    0,     0,  2.31, 1],
-        [    0,     0, -2.31, 1],
+        [-car_hw,       0,       0, 1],
+        [ car_hw,       0,       0, 1],
+        [      0,  car_hh,       0, 1],
+        [      0, -car_hh,       0, 1],
+        [      0,       0,  car_hl, 1],
+        [      0,       0, -car_hl, 1],
     ]).T
     P = Rt @  P
     P = P.T

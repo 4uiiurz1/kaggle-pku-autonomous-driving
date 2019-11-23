@@ -86,6 +86,9 @@ def main():
     else:
         raise NotImplementedError
 
+    if config['wh']:
+        heads['wh'] = 2
+
     # criterion = OrderedDict()
     # for head in heads.keys():
     #     criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
@@ -176,9 +179,9 @@ def main():
                         img_pred = visualize(img, det[det[:, -1] > args.score_th])
 
                         plt.subplot(121)
-                        plt.imshow(img_gt)
+                        plt.imshow(img_gt[..., ::-1])
                         plt.subplot(122)
-                        plt.imshow(img_pred)
+                        plt.imshow(img_pred[..., ::-1])
                         plt.show()
 
                 pbar.update(1)

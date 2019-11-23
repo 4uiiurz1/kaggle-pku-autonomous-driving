@@ -61,10 +61,12 @@ def parse_args():
     parser.add_argument('--input_w', default=640, type=int)
     parser.add_argument('--input_h', default=512, type=int)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
+    parser.add_argument('--wh', default=True, type=str2bool)
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
     parser.add_argument('--reg_loss', default='L1Loss')
+    parser.add_argument('--wh_loss', default='L1Loss')
     parser.add_argument('--depth_loss', default='DepthL1Loss')
     parser.add_argument('--eular_loss', default='L1Loss')
     parser.add_argument('--trig_loss', default='L1Loss')
@@ -117,6 +119,8 @@ def parse_args():
     parser.add_argument('--contrast_limit', default=0.2, type=float)
     parser.add_argument('--iso_noise', default=False, type=str2bool)
     parser.add_argument('--iso_noise_p', default=0.5, type=float)
+    parser.add_argument('--clahe', default=False, type=str2bool)
+    parser.add_argument('--clahe_p', default=0.5, type=float)
 
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--resume', action='store_true')
@@ -147,7 +151,10 @@ def train(config, heads, train_loader, model, criterion, optimizer, epoch):
         for head in heads.keys():
             losses[head] = criterion[head](output[head], batch[head].cuda(),
                                            mask if head == 'hm' else reg_mask)
-            loss += losses[head]
+            if head == 'wh':
+                loss += 0.1 * losses[head]
+            else:
+                loss += losses[head]
         losses['loss'] = loss
 
         # compute gradient and do optimizing step
@@ -193,7 +200,10 @@ def validate(config, heads, val_loader, model, criterion):
             for head in heads.keys():
                 losses[head] = criterion[head](output[head], batch[head].cuda(),
                                                mask if head == 'hm' else reg_mask)
-                loss += losses[head]
+                if head == 'wh':
+                    loss += 0.1 * losses[head]
+                else:
+                    loss += losses[head]
             losses['loss'] = loss
 
             avg_meters['loss'].update(losses['loss'].item(), input.size(0))
@@ -264,6 +274,9 @@ def main():
     else:
         raise NotImplementedError
 
+    if config['wh']:
+        heads['wh'] = 2
+
     criterion = OrderedDict()
     for head in heads.keys():
         criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
@@ -294,8 +307,11 @@ def main():
             ) if config['contrast'] else NoOp(),
         ], p=1),
         transforms.ISONoise(
-            p=config['iso_noise_p']
+            p=config['iso_noise_p'],
         ) if config['iso_noise'] else NoOp(),
+        transforms.CLAHE(
+            p=config['clahe_p'],
+        ) if config['clahe'] else NoOp(),
     ], keypoint_params=KeypointParams(format='xy', remove_invisible=False))
 
     val_transform = None
