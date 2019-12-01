@@ -60,6 +60,7 @@ def parse_args():
                         help='model architecture: (default: resnet18_fpn)')
     parser.add_argument('--input_w', default=640, type=int)
     parser.add_argument('--input_h', default=512, type=int)
+    parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
     parser.add_argument('--wh', default=True, type=str2bool)
 
@@ -237,11 +238,11 @@ def main():
         os.makedirs('models/%s' % config['name'])
 
     if config['resume']:
-        with open('models/%s/config.yaml' % config['name'], 'r') as f:
+        with open('models/%s/config.yml' % config['name'], 'r') as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         config['resume'] = True
 
-    with open('models/%s/config.yaml' % config['name'], 'w') as f:
+    with open('models/%s/config.yml' % config['name'], 'w') as f:
         yaml.dump(config, f)
 
     print('-'*20)
@@ -372,7 +373,7 @@ def main():
         )
 
         # create model
-        model = get_model(config['arch'], heads=heads)
+        model = get_model(config['arch'], heads=heads, freeze_bn=config['freeze_bn'])
         model = model.cuda()
         # print(model)
 

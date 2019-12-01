@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pretrainedmodels
+from .DCNv2.dcn_v2 import DCN
 
 
 def fill_fc_weights(layers):
@@ -14,7 +15,7 @@ def fill_fc_weights(layers):
                 nn.init.constant_(m.bias, 0)
 
 
-class ResNetFPN(nn.Module):
+class ResNetFPNDCN(nn.Module):
     def __init__(self, backbone, heads, num_filters=256, pretrained=True, freeze_bn=False):
         super().__init__()
 
@@ -68,18 +69,18 @@ class ResNetFPN(nn.Module):
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
+            DCN(num_filters, num_filters,
+                kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.decode2 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
+            DCN(num_filters, num_filters,
+                kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.decode1 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
+            DCN(num_filters, num_filters,
+                kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
 

@@ -71,6 +71,10 @@ def visualize(img, labels, scale_w=1, scale_h=1):
         pts = pts.reshape((-1, 1, 2))
 
         cv2.polylines(img, [pts[:-1]], False, (44, 160, 44), 4)
-        cv2.circle(img, tuple(pts[-1, 0]), int(1000 / P[-1, 2]), (180, 119, 31), -1)
+        mask = img.copy()
+        cv2.fillConvexPoly(mask, pts[[3, 4, 7, 8]], color=(44, 160, 44))
+        img = (img * 0.5 + mask * 0.5).astype('uint8')
+        # cv2.circle(img, tuple(pts[-1, 0]), int(1000 / P[-1, 2]), (180, 119, 31), -1)
+
 
     return img

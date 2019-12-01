@@ -14,7 +14,62 @@ def fill_fc_weights(layers):
                 nn.init.constant_(m.bias, 0)
 
 
-class ResNetFPN(nn.Module):
+class AddCoordinates(object):
+
+    r"""Coordinate Adder Module as defined in 'An Intriguing Failing of
+    Convolutional Neural Networks and the CoordConv Solution'
+    (https://arxiv.org/pdf/1807.03247.pdf).
+    This module concatenates coordinate information (`x`, `y`, and `r`) with
+    given input tensor.
+    `x` and `y` coordinates are scaled to `[-1, 1]` range where origin is the
+    center. `r` is the Euclidean distance from the center and is scaled to
+    `[0, 1]`.
+    Args:
+        with_r (bool, optional): If `True`, adds radius (`r`) coordinate
+            information to input x. Default: `False`
+    Shape:
+        - Input: `(N, C_{in}, H_{in}, W_{in})`
+        - Output: `(N, (C_{in} + 2) or (C_{in} + 3), H_{in}, W_{in})`
+    Examples:
+        >>> coord_adder = AddCoordinates(True)
+        >>> input = torch.randn(8, 3, 64, 64)
+        >>> output = coord_adder(input)
+        >>> coord_adder = AddCoordinates(True)
+        >>> input = torch.randn(8, 3, 64, 64).cuda()
+        >>> output = coord_adder(input)
+        >>> device = torch.device("cuda:0")
+        >>> coord_adder = AddCoordinates(True)
+        >>> input = torch.randn(8, 3, 64, 64).to(device)
+        >>> output = coord_adder(input)
+    """
+
+    def __init__(self, with_r=False):
+        self.with_r = with_r
+
+    def __call__(self, x):
+        b, c, h, w = x.size()
+
+        y_coords = 2.0 * torch.arange(h).unsqueeze(1).expand(h, w) / (h - 1.0) - 1.0
+        x_coords = 2.0 * torch.arange(w).unsqueeze(0).expand(h, w) / (w - 1.0) - 1.0
+
+        # coords = torch.stack((y_coords, x_coords), dim=0)
+        coords = y_coords
+
+        if self.with_r:
+            rs = ((y_coords ** 2) + (x_coords ** 2)) ** 0.5
+            rs = rs / torch.max(rs)
+            rs = torch.unsqueeze(rs, dim=0)
+            coords = torch.cat((coords, rs), dim=0)
+
+        coords = torch.unsqueeze(coords, dim=0).repeat(b, 1, 1, 1)
+        coords = coords.float()
+
+        x = torch.cat([coords.to(x.device), x], 1)
+
+        return x
+
+
+class ResNetFPNCConv(nn.Module):
     def __init__(self, backbone, heads, num_filters=256, pretrained=True, freeze_bn=False):
         super().__init__()
 
@@ -83,10 +138,12 @@ class ResNetFPN(nn.Module):
             nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
 
+        self.cconv = AddCoordinates()
+
         for head in sorted(self.heads):
             num_output = self.heads[head]
             fc = nn.Sequential(
-                nn.Conv2d(num_filters, num_filters // 2,
+                nn.Conv2d(num_filters + 1, num_filters // 2,
                           kernel_size=3, padding=1, bias=False),
                 nn.BatchNorm2d(num_filters // 2),
                 nn.ReLU(inplace=True),
@@ -121,6 +178,8 @@ class ResNetFPN(nn.Module):
         map2 = self.decode2(map2)
         map1 = lat1 + F.interpolate(map2, scale_factor=2, mode="nearest")
         map1 = self.decode1(map1)
+
+        map1 = self.cconv(map1)
 
         ret = {}
         for head in self.heads:

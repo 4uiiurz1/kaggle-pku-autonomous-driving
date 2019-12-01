@@ -56,7 +56,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open('models/%s/config.yaml' % args.name, 'r') as f:
+    with open('models/%s/config.yml' % args.name, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     print('-'*20)

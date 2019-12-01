@@ -14,7 +14,7 @@ def fill_fc_weights(layers):
                 nn.init.constant_(m.bias, 0)
 
 
-class ResNetFPN(nn.Module):
+class ResNetFPNGN(nn.Module):
     def __init__(self, backbone, heads, num_filters=256, pretrained=True, freeze_bn=False):
         super().__init__()
 
@@ -49,38 +49,38 @@ class ResNetFPN(nn.Module):
         self.lateral4 = nn.Sequential(
             nn.Conv2d(num_bottleneck_filters, num_filters,
                       kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral3 = nn.Sequential(
             nn.Conv2d(num_bottleneck_filters // 2,
                       num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral2 = nn.Sequential(
             nn.Conv2d(num_bottleneck_filters // 4,
                       num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral1 = nn.Sequential(
             nn.Conv2d(num_bottleneck_filters // 8,
                       num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
             nn.Conv2d(num_filters, num_filters,
                       kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.decode2 = nn.Sequential(
             nn.Conv2d(num_filters, num_filters,
                       kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.decode1 = nn.Sequential(
             nn.Conv2d(num_filters, num_filters,
                       kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
 
         for head in sorted(self.heads):
@@ -88,7 +88,7 @@ class ResNetFPN(nn.Module):
             fc = nn.Sequential(
                 nn.Conv2d(num_filters, num_filters // 2,
                           kernel_size=3, padding=1, bias=False),
-                nn.BatchNorm2d(num_filters // 2),
+                nn.GroupNorm(32, num_filters // 2),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(num_filters // 2, num_output,
                           kernel_size=1))

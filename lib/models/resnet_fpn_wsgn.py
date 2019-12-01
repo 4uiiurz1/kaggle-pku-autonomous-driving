@@ -4,6 +4,23 @@ import torch.nn.functional as F
 import pretrainedmodels
 
 
+class Conv2d(nn.Conv2d):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True):
+        super().__init__(in_channels, out_channels, kernel_size, stride,
+                 padding, dilation, groups, bias)
+
+    def forward(self, x):
+        weight = self.weight
+        weight_mean = weight.mean(dim=1, keepdim=True).mean(dim=2,
+                                  keepdim=True).mean(dim=3, keepdim=True)
+        weight = weight - weight_mean
+        std = weight.view(weight.size(0), -1).std(dim=1).view(-1, 1, 1, 1) + 1e-5
+        weight = weight / std.expand_as(weight)
+        return F.conv2d(x, weight, self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
+
+
 def fill_fc_weights(layers):
     for m in layers.modules():
         if isinstance(m, nn.Conv2d):
@@ -14,7 +31,7 @@ def fill_fc_weights(layers):
                 nn.init.constant_(m.bias, 0)
 
 
-class ResNetFPN(nn.Module):
+class ResNetFPNWSGN(nn.Module):
     def __init__(self, backbone, heads, num_filters=256, pretrained=True, freeze_bn=False):
         super().__init__()
 
@@ -47,48 +64,48 @@ class ResNetFPN(nn.Module):
                     m.bias.requires_grad = False
 
         self.lateral4 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters, num_filters,
-                      kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters, num_filters,
+                   kernel_size=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral3 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 2,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 2,
+                   num_filters, kernel_size=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral2 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 4,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 4,
+                   num_filters, kernel_size=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.lateral1 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 8,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 8,
+                   num_filters, kernel_size=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.decode2 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
         self.decode1 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False),
+            nn.GroupNorm(32, num_filters),
             nn.ReLU(inplace=True))
 
         for head in sorted(self.heads):
             num_output = self.heads[head]
             fc = nn.Sequential(
-                nn.Conv2d(num_filters, num_filters // 2,
-                          kernel_size=3, padding=1, bias=False),
-                nn.BatchNorm2d(num_filters // 2),
+                Conv2d(num_filters, num_filters // 2,
+                       kernel_size=3, padding=1, bias=False),
+                nn.GroupNorm(32, num_filters // 2),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(num_filters // 2, num_output,
                           kernel_size=1))

@@ -56,7 +56,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open('models/%s/config.yaml' % args.name, 'r') as f:
+    with open('models/%s/config.yml' % args.name, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     print('-'*20)
@@ -101,6 +101,9 @@ def main():
     else:
         raise NotImplementedError
 
+    if config['wh']:
+        heads['wh'] = 2
+
     preds = []
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
@@ -136,7 +139,7 @@ def main():
                 for k, det in enumerate(dets):
                     preds_fold.append(convert_labels_to_str(det[det[:, -1] > args.score_th]))
 
-                    if args.show and len(det[det[:, -1] > args.score_th]) != 0:
+                    if args.show:
                         img = cv2.imread(batch['img_path'][k])
                         img_pred = visualize(img, det[det[:, -1] > args.score_th])
                         plt.imshow(img_pred)
