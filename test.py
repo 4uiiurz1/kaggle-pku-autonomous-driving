@@ -128,20 +128,23 @@ def main():
 
                 output = model(input)
 
-                if config['rot'] == 'eular':
-                    dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
-                elif config['rot'] == 'trig':
-                    dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
-                elif config['rot'] == 'quat':
-                    dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
+                dets = decode(
+                    output['hm'],
+                    output['reg'],
+                    output['depth'],
+                    eular=output['eular'] if config['rot'] == 'eular' else None,
+                    trig=output['trig'] if config['rot'] == 'trig' else None,
+                    quat=output['quat'] if config['rot'] == 'quat' else None,
+                    wh=output['wh'] if config['wh'] else None,
+                )
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
-                    preds_fold.append(convert_labels_to_str(det[det[:, -1] > args.score_th]))
+                    preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
 
                     if args.show:
                         img = cv2.imread(batch['img_path'][k])
-                        img_pred = visualize(img, det[det[:, -1] > args.score_th])
+                        img_pred = visualize(img, det[det[:, 6] > args.score_th])
                         plt.imshow(img_pred)
                         plt.show()
 

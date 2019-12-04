@@ -24,7 +24,7 @@ def visualize(img, labels, scale_w=1, scale_h=1):
     z_l = 2.31
 
     img = img.copy()
-    for yaw, pitch, roll, x, y, z, _ in labels:
+    for pitch, yaw, roll, x, y, z, score, *opt in labels:
         yaw *= -1
         pitch *= -1
         roll *= -1
@@ -74,6 +74,13 @@ def visualize(img, labels, scale_w=1, scale_h=1):
         mask = img.copy()
         cv2.fillConvexPoly(mask, pts[[3, 4, 7, 8]], color=(44, 160, 44))
         img = (img * 0.5 + mask * 0.5).astype('uint8')
+        if len(opt) != 0:
+            w = int(opt[0])
+            h = int(opt[1])
+            x = int(pts[-1, 0, 0])
+            y = int(pts[-1, 0, 1])
+            cv2.rectangle(img, (x - w // 2, y - h // 2),
+                          (x + w // 2, y + h // 2), (0, 0, 255), 4)
         # cv2.circle(img, tuple(pts[-1, 0]), int(1000 / P[-1, 2]), (180, 119, 31), -1)
 
 

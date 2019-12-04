@@ -71,8 +71,8 @@ def convert_quat_to_euler(qx, qy, qz, qw):
     return yaw, pitch, roll
 
 
-def decode(hm, reg, depth, eular=None, trig=None, quat=None, mask=None, K=100,
-           org_width=3384, org_height=2710):
+def decode(hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
+           K=100, org_width=3384, org_height=2710):
     batch, cat, height, width = hm.size()
 
     hm = nms(torch.sigmoid(hm))
@@ -92,10 +92,8 @@ def decode(hm, reg, depth, eular=None, trig=None, quat=None, mask=None, K=100,
     zs = _tranpose_and_gather_feat(depth, inds)
     zs = zs.view(batch, K, 1)
 
-    xs /= width
-    ys /= height
-    xs *= org_width
-    ys *= org_height
+    xs *= org_width / width
+    ys *= org_height / height
     xs, ys = convert_2d_to_3d(xs, ys, zs)
 
     if eular is not None:
@@ -117,6 +115,12 @@ def decode(hm, reg, depth, eular=None, trig=None, quat=None, mask=None, K=100,
     pitch = pitch.view(batch, K, 1)
     roll = roll.view(batch, K, 1)
 
-    dets = torch.cat([yaw, pitch, roll, xs, ys, zs, scores], dim=2)
+    dets = torch.cat([pitch, yaw, roll, xs, ys, zs, scores], dim=2)
+
+    if wh is not None:
+        wh = _tranpose_and_gather_feat(wh, inds)
+        wh[..., 0:1] *= org_width / width
+        wh[..., 1:2] *= org_height / height
+        dets = torch.cat([dets, wh], dim=2)
 
     return dets

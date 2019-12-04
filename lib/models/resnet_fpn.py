@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pretrainedmodels
 
+from .modules import Conv2d
+
 
 def fill_fc_weights(layers):
     for m in layers.modules():
@@ -15,7 +17,8 @@ def fill_fc_weights(layers):
 
 
 class ResNetFPN(nn.Module):
-    def __init__(self, backbone, heads, num_filters=256, pretrained=True, freeze_bn=False):
+    def __init__(self, backbone, heads, num_filters=256, pretrained=True,
+                 gn=False, ws=False, freeze_bn=False):
         super().__init__()
 
         self.heads = heads
@@ -47,48 +50,48 @@ class ResNetFPN(nn.Module):
                     m.bias.requires_grad = False
 
         self.lateral4 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters, num_filters,
-                      kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters, num_filters,
+                   kernel_size=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.lateral3 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 2,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 2, num_filters,
+                   kernel_size=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.lateral2 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 4,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 4, num_filters,
+                   kernel_size=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.lateral1 = nn.Sequential(
-            nn.Conv2d(num_bottleneck_filters // 8,
-                      num_filters, kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_bottleneck_filters // 8, num_filters,
+                   kernel_size=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.decode2 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
         self.decode1 = nn.Sequential(
-            nn.Conv2d(num_filters, num_filters,
-                      kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_filters),
+            Conv2d(num_filters, num_filters,
+                   kernel_size=3, padding=1, bias=False, ws=ws),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
             nn.ReLU(inplace=True))
 
         for head in sorted(self.heads):
             num_output = self.heads[head]
             fc = nn.Sequential(
-                nn.Conv2d(num_filters, num_filters // 2,
-                          kernel_size=3, padding=1, bias=False),
-                nn.BatchNorm2d(num_filters // 2),
+                Conv2d(num_filters, num_filters // 2,
+                       kernel_size=3, padding=1, bias=False, ws=ws),
+                nn.GroupNorm(32, num_filters // 2) if gn else nn.BatchNorm2d(num_filters // 2),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(num_filters // 2, num_output,
                           kernel_size=1))

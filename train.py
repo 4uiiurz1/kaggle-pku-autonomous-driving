@@ -63,6 +63,8 @@ def parse_args():
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
     parser.add_argument('--wh', default=True, type=str2bool)
+    parser.add_argument('--gn', default=True, type=str2bool)
+    parser.add_argument('--ws', default=True, type=str2bool)
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
@@ -215,12 +217,15 @@ def validate(config, heads, val_loader, model, criterion):
             pbar.set_postfix(postfix)
             pbar.update(1)
 
-            if config['rot'] == 'eular':
-                dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
-            elif config['rot'] == 'trig':
-                dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
-            elif config['rot'] == 'quat':
-                dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
+            dets = decode(
+                output['hm'],
+                output['reg'],
+                output['depth'],
+                eular=output['eular'] if config['rot'] == 'eular' else None,
+                trig=output['trig'] if config['rot'] == 'trig' else None,
+                quat=output['quat'] if config['rot'] == 'quat' else None,
+                wh=output['wh'] if config['wh'] else None,
+            )
         pbar.close()
 
         print(dets[0, 0])
@@ -373,7 +378,8 @@ def main():
         )
 
         # create model
-        model = get_model(config['arch'], heads=heads, freeze_bn=config['freeze_bn'])
+        model = get_model(config['arch'], heads=heads, gn=config['gn'],
+                          ws=config['ws'], freeze_bn=config['freeze_bn'])
         model = model.cuda()
         # print(model)
 

@@ -159,24 +159,27 @@ def main():
                 #     postfix[head + '_loss'] = avg_meters[head].avg
                 # pbar.set_postfix(postfix)
 
-                if config['rot'] == 'eular':
-                    dets = decode(output['hm'], output['reg'], output['depth'], eular=output['eular'])
-                elif config['rot'] == 'trig':
-                    dets = decode(output['hm'], output['reg'], output['depth'], trig=output['trig'])
-                elif config['rot'] == 'quat':
-                    dets = decode(output['hm'], output['reg'], output['depth'], quat=output['quat'])
+                dets = decode(
+                    output['hm'],
+                    output['reg'],
+                    output['depth'],
+                    eular=output['eular'] if config['rot'] == 'eular' else None,
+                    trig=output['trig'] if config['rot'] == 'trig' else None,
+                    quat=output['quat'] if config['rot'] == 'quat' else None,
+                    wh=output['wh'] if config['wh'] else None,
+                )
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
-                    pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, -1] > args.score_th])
+                    pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 
                     if args.show:
                         gt = batch['gt'].numpy()[k]
 
                         img = cv2.imread(batch['img_path'][k])
                         img_gt = visualize(img, gt[gt[:, -1] > 0])
-                        img_pred = visualize(img, det[det[:, -1] > args.score_th])
+                        img_pred = visualize(img, det[det[:, 6] > args.score_th])
 
                         plt.subplot(121)
                         plt.imshow(img_gt[..., ::-1])
