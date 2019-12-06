@@ -39,6 +39,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
+from lib.utils.nms import nms
 
 
 def parse_args():
@@ -140,6 +141,7 @@ def main():
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
+                    det = nms(det)
                     preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
 
                     if args.show:

@@ -39,6 +39,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
+from lib.utlis.nms import nms
 
 
 def parse_args():
@@ -171,6 +172,7 @@ def main():
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
+                    det = nms(det)
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
                     pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 

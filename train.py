@@ -63,8 +63,8 @@ def parse_args():
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
     parser.add_argument('--wh', default=True, type=str2bool)
-    parser.add_argument('--gn', default=True, type=str2bool)
-    parser.add_argument('--ws', default=True, type=str2bool)
+    parser.add_argument('--gn', default=False, type=str2bool)
+    parser.add_argument('--ws', default=False, type=str2bool)
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
