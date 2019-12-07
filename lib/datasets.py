@@ -175,8 +175,8 @@ class Dataset(torch.utils.data.Dataset):
             quat[2, ct_int[1], ct_int[0]] = qz
             quat[3, ct_int[1], ct_int[0]] = qw
 
-            gt[k, 0] = ann['yaw']
-            gt[k, 1] = ann['pitch']
+            gt[k, 0] = ann['pitch']
+            gt[k, 1] = ann['yaw']
             gt[k, 2] = ann['roll']
             gt[k, 3:5] = convert_2d_to_3d(ann['x'] * width / self.input_w, ann['y'] * height / self.input_h, ann['z'])
             gt[k, 5] = ann['z']

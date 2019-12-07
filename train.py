@@ -218,6 +218,7 @@ def validate(config, heads, val_loader, model, criterion):
             pbar.update(1)
 
             dets = decode(
+                config,
                 output['hm'],
                 output['reg'],
                 output['depth'],

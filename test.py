@@ -47,6 +47,8 @@ def parse_args():
 
     parser.add_argument('--name', default=None)
     parser.add_argument('--score_th', default=0.6, type=float)
+    parser.add_argument('--nms', default=True, type=str2bool)
+    parser.add_argument('--nms_th', default=0.1, type=float)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -77,6 +79,8 @@ def main():
         img_paths,
         mask_paths,
         labels,
+        input_w=config['input_w'],
+        input_h=config['input_h'],
         transform=None,
         test=True)
     test_loader = torch.utils.data.DataLoader(
@@ -130,6 +134,7 @@ def main():
                 output = model(input)
 
                 dets = decode(
+                    config,
                     output['hm'],
                     output['reg'],
                     output['depth'],
@@ -141,7 +146,8 @@ def main():
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
-                    det = nms(det)
+                    if args.nms:
+                        det = nms(det, dist_th=args.nms_th)
                     preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
 
                     if args.show:

@@ -11,7 +11,6 @@ def dist(d1, d2, norm=False):
 
 def nms(dets, dist_th=5, norm=False):
     B = dets.copy()
-    print(B.shape)
     D = []
     while len(B) != 0:
         m = np.argmax(B[:, 6])

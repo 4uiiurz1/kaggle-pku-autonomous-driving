@@ -71,7 +71,7 @@ def convert_quat_to_euler(qx, qy, qz, qw):
     return yaw, pitch, roll
 
 
-def decode(hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
+def decode(config, hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
            K=100, org_width=3384, org_height=2710):
     batch, cat, height, width = hm.size()
 
@@ -79,7 +79,8 @@ def decode(hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
     if mask is not None:
         hm *= mask
 
-    depth = 1. / (torch.sigmoid(depth) + 1e-6) - 1.
+    if config['depth_loss'] == 'DepthL1Loss':
+        depth = 1. / (torch.sigmoid(depth) + 1e-6) - 1.
 
     scores, inds, clses, ys, xs = _topk(hm, K=K)
     scores = scores.view(batch, K, 1)
@@ -96,17 +97,17 @@ def decode(hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
     ys *= org_height / height
     xs, ys = convert_2d_to_3d(xs, ys, zs)
 
-    if eular is not None:
+    if config['rot'] == 'eular':
         eular = _tranpose_and_gather_feat(eular, inds)
         yaw, pitch, roll = eular[..., 0:1], eular[..., 1:2], eular[..., 2:3]
         roll = rotate(roll, -np.pi)
-    elif trig is not None:
+    elif config['rot'] == 'trig':
         trig = _tranpose_and_gather_feat(trig, inds)
         yaw = torch.atan2(trig[..., 1:2], trig[..., 0:1])
         pitch = torch.atan2(trig[..., 3:4], trig[..., 2:3])
         roll = torch.atan2(trig[..., 5:6], trig[..., 4:5])
         roll = rotate(roll, -np.pi)
-    elif quat is not None:
+    elif config['rot'] == 'quat':
         quat = _tranpose_and_gather_feat(quat, inds)
         yaw, pitch, roll = convert_quat_to_euler(
             quat[..., 0:1], quat[..., 1:2], quat[..., 2:3], quat[..., 3:4])

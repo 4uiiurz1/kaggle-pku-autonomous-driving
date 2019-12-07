@@ -39,7 +39,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.utlis.nms import nms
+from lib.utils.nms import nms
 
 
 def parse_args():
@@ -47,6 +47,8 @@ def parse_args():
 
     parser.add_argument('--name', default=None)
     parser.add_argument('--score_th', default=0.1, type=float)
+    parser.add_argument('--nms', default=False, type=str2bool)
+    parser.add_argument('--nms_th', default=5, type=float)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -161,6 +163,7 @@ def main():
                 # pbar.set_postfix(postfix)
 
                 dets = decode(
+                    config,
                     output['hm'],
                     output['reg'],
                     output['depth'],
@@ -172,7 +175,8 @@ def main():
                 dets = dets.detach().cpu().numpy()
 
                 for k, det in enumerate(dets):
-                    det = nms(det)
+                    if args.nms:
+                        det = nms(det, dist_th=args.nms_th)
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
                     pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 
@@ -199,7 +203,10 @@ def main():
 
     # print('loss: %f' %avg_meters['loss'].avg)
 
-    pred_df.to_csv('preds/%s_%.2f.csv' %(args.name, args.score_th), index=False)
+    dst_name = '%s_%.2f' %(args.name, args.score_th)
+    if args.nms:
+        dst_name += '_nms%.1f' %args.nms_th
+    pred_df.to_csv('preds/%s.csv' %dst_name, index=False)
     print(pred_df.head())
 
 
