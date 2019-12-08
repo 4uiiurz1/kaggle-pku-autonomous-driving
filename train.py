@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument('--input_h', default=512, type=int)
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
-    parser.add_argument('--wh', default=True, type=str2bool)
+    parser.add_argument('--wh', default=False, type=str2bool)
     parser.add_argument('--gn', default=False, type=str2bool)
     parser.add_argument('--ws', default=False, type=str2bool)
 
@@ -70,7 +70,7 @@ def parse_args():
     parser.add_argument('--hm_loss', default='FocalLoss')
     parser.add_argument('--reg_loss', default='L1Loss')
     parser.add_argument('--wh_loss', default='L1Loss')
-    parser.add_argument('--depth_loss', default='DepthL1Loss')
+    parser.add_argument('--depth_loss', default='L1Loss')
     parser.add_argument('--eular_loss', default='L1Loss')
     parser.add_argument('--trig_loss', default='L1Loss')
     parser.add_argument('--quat_loss', default='L1Loss')

@@ -153,7 +153,7 @@ def main():
                     if args.show:
                         img = cv2.imread(batch['img_path'][k])
                         img_pred = visualize(img, det[det[:, 6] > args.score_th])
-                        plt.imshow(img_pred)
+                        plt.imshow(img_pred[..., ::-1])
                         plt.show()
 
                 pbar.update(1)
