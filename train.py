@@ -52,19 +52,20 @@ def parse_args():
                         help='model name: (default: arch+timestamp)')
     parser.add_argument('--epochs', default=30, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('-b', '--batch_size', default=8, type=int,
-                        metavar='N', help='mini-batch size (default: 8)')
+    parser.add_argument('-b', '--batch_size', default=4, type=int,
+                        metavar='N', help='mini-batch size (default: 4)')
 
     # model
     parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18_fpn',
                         help='model architecture: (default: resnet18_fpn)')
-    parser.add_argument('--input_w', default=640, type=int)
-    parser.add_argument('--input_h', default=512, type=int)
+    parser.add_argument('--input_w', default=1280, type=int)
+    parser.add_argument('--input_h', default=1024, type=int)
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
-    parser.add_argument('--wh', default=False, type=str2bool)
-    parser.add_argument('--gn', default=False, type=str2bool)
-    parser.add_argument('--ws', default=False, type=str2bool)
+    parser.add_argument('--wh', default=True, type=str2bool)
+    parser.add_argument('--gn', default=True, type=str2bool)
+    parser.add_argument('--ws', default=True, type=str2bool)
+    parser.add_argument('--lhalf', default=True, type=str2bool)
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
@@ -217,19 +218,19 @@ def validate(config, heads, val_loader, model, criterion):
             pbar.set_postfix(postfix)
             pbar.update(1)
 
-            dets = decode(
-                config,
-                output['hm'],
-                output['reg'],
-                output['depth'],
-                eular=output['eular'] if config['rot'] == 'eular' else None,
-                trig=output['trig'] if config['rot'] == 'trig' else None,
-                quat=output['quat'] if config['rot'] == 'quat' else None,
-                wh=output['wh'] if config['wh'] else None,
-            )
+            # dets = decode(
+            #     config,
+            #     output['hm'],
+            #     output['reg'],
+            #     output['depth'],
+            #     eular=output['eular'] if config['rot'] == 'eular' else None,
+            #     trig=output['trig'] if config['rot'] == 'trig' else None,
+            #     quat=output['quat'] if config['rot'] == 'quat' else None,
+            #     wh=output['wh'] if config['wh'] else None,
+            # )
         pbar.close()
 
-        print(dets[0, 0])
+        # print(dets[0, 0])
 
     return avg_meters['loss'].avg
 
@@ -352,6 +353,7 @@ def main():
             input_w=config['input_w'],
             input_h=config['input_h'],
             transform=train_transform,
+            lhalf=config['lhalf'],
             hflip=config['hflip_p'] if config['hflip'] else 0,
             scale=config['scale_p'] if config['scale'] else 0,
             scale_limit=config['scale_limit'])
@@ -369,7 +371,8 @@ def main():
             val_labels,
             input_w=config['input_w'],
             input_h=config['input_h'],
-            transform=val_transform)
+            transform=val_transform,
+            lhalf=config['lhalf'])
         val_loader = torch.utils.data.DataLoader(
             val_set,
             batch_size=config['batch_size'],

@@ -6,6 +6,10 @@ processed/*
 models/*
 submissions/*
 preds/*
+outputs/*
 notebooks/*
 pretrained_weights/*
 *.bat
+
+ensemble_test.py
+ensemble_val.py

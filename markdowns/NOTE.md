@@ -12,6 +12,11 @@
   - ミス。
 - NonLocalBlockを向き推定のheadに追加。
   - 計算が重すぎて無理。
+- アンサンブル
+  - NMS
+  - Soft NMS
+  - Weighted Points Fusion
+  - decode前のmapを加重平均するのもありかもしれない
 
 ## Experiments
 ### NMS
@@ -20,7 +25,8 @@
 
 NMS  | mAP
 -----|---
-None | 0.19142559036561727  
+None | 0.19142559036561727
+0.05 | 0.21370899204220017
 0.1  | 0.21371086361037867
 0.5  | 0.2136521156341741
 1.0  | 0.21339207211238534
@@ -30,10 +36,17 @@ None | 0.19142559036561727
 - fold1
 - val score_th=0.1
 - test score_th=0.6
+- nms (th=0.1) (testのみ)
 
 model | val mAP | PublicLB
 ------|---------|----------
 120708 (w/o gn+ws, w/o wh, det=DepthL1) | 0.21807085313661206
 120713 (w/o gn+ws, w/o wh, det=L1) | 0.23062173249021703 | 0.070
-120720 (w/ gn+ws, w/o wh, det=L1)  | 0.23069422381934448 | 0.073
-120814 (w/ gn+ws, w/ wh, det=L1)  | 0.23285714122775697 | 0.078
+120720 (w/ gn+ws, w/o wh, det=L1) | 0.23069422381934448 | 0.073
+120814 (w/ gn+ws, w/ wh, det=L1) | 0.23285714122775697 | 0.078
+120814 (w/ gn+ws, w/ wh, det=L1, lhalf) | 0.2357547338344435 | 0.070
+
+### various architecture
+- fold1
+- val score_th=0.1
+- test score_th=0.6

@@ -20,8 +20,8 @@ from .utils.vis import visualize
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, img_paths, mask_paths, labels, input_w=640, input_h=512,
-                 down_ratio=4, transform=None, test=False, hflip=0,
-                 scale=0, scale_limit=0):
+                 down_ratio=4, transform=None, test=False, lhalf=False,
+                 hflip=0, scale=0, scale_limit=0):
         self.img_paths = img_paths
         self.mask_paths = mask_paths
         self.labels = labels
@@ -30,6 +30,7 @@ class Dataset(torch.utils.data.Dataset):
         self.down_ratio = down_ratio
         self.transform = transform
         self.test = test
+        self.lhalf = lhalf
         self.hflip = hflip
         self.scale = scale
         self.scale_limit = scale_limit
@@ -60,6 +61,10 @@ class Dataset(torch.utils.data.Dataset):
             img = img.transpose(2, 0, 1)
 
             mask = mask[None, ...]
+
+            if self.lhalf:
+                img = img[:, self.input_h // 2:]
+                mask = mask[:, self.output_h // 2:]
 
             return {
                 'img_path': img_path,
@@ -181,6 +186,18 @@ class Dataset(torch.utils.data.Dataset):
             gt[k, 3:5] = convert_2d_to_3d(ann['x'] * width / self.input_w, ann['y'] * height / self.input_h, ann['z'])
             gt[k, 5] = ann['z']
             gt[k, 6] = 1
+
+        if self.lhalf:
+            img = img[:, self.input_h // 2:]
+            mask = mask[:, self.output_h // 2:]
+            hm = hm[:, self.output_h // 2:]
+            reg_mask = reg_mask[:, self.output_h // 2:]
+            reg = reg[:, self.output_h // 2:]
+            wh = wh[:, self.output_h // 2:]
+            depth = depth[:, self.output_h // 2:]
+            eular = eular[:, self.output_h // 2:]
+            trig = trig[:, self.output_h // 2:]
+            quat = quat[:, self.output_h // 2:]
 
         ret = {
             'img_path': img_path,

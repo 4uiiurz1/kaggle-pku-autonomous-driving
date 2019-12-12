@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pretrainedmodels
+import timm
 
 from .modules import Conv2d
 
@@ -16,6 +17,12 @@ def fill_fc_weights(layers):
                 nn.init.constant_(m.bias, 0)
 
 
+def convert_to_inplace_relu(model):
+    for m in model.modules():
+        if isinstance(m, nn.ReLU):
+            m.inplace = True
+
+
 class ResNetFPN(nn.Module):
     def __init__(self, backbone, heads, num_filters=256, pretrained=True,
                  gn=False, ws=False, freeze_bn=False):
@@ -23,22 +30,41 @@ class ResNetFPN(nn.Module):
 
         self.heads = heads
 
-        pretrained = 'imagenet' if pretrained else None
-
         if backbone == 'resnet18':
+            pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.resnet18(pretrained=pretrained)
             num_bottleneck_filters = 512
         elif backbone == 'resnet34':
+            pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.resnet34(pretrained=pretrained)
             num_bottleneck_filters = 512
         elif backbone == 'resnet50':
+            pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.resnet50(pretrained=pretrained)
             num_bottleneck_filters = 2048
         elif backbone == 'resnet101':
+            pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.resnet101(pretrained=pretrained)
             num_bottleneck_filters = 2048
         elif backbone == 'resnet152':
+            pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.resnet152(pretrained=pretrained)
+            num_bottleneck_filters = 2048
+        elif backbone == 'se_resnext50_32x4d':
+            pretrained = 'imagenet' if pretrained else None
+            self.backbone = pretrainedmodels.se_resnext50_32x4d(pretrained=pretrained)
+            num_bottleneck_filters = 2048
+        elif backbone == 'se_resnext101_32x4d':
+            pretrained = 'imagenet' if pretrained else None
+            self.backbone = pretrainedmodels.se_resnext101_32x4d(pretrained=pretrained)
+            num_bottleneck_filters = 2048
+        elif backbone == 'resnet50_v1d':
+            self.backbone = timm.create_model('gluon_resnet50_v1d', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
+            num_bottleneck_filters = 2048
+        elif backbone == 'resnet101_v1d':
+            self.backbone = timm.create_model('gluon_resnet101_v1d', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
             num_bottleneck_filters = 2048
         else:
             raise NotImplementedError
@@ -102,10 +128,14 @@ class ResNetFPN(nn.Module):
             self.__setattr__(head, fc)
 
     def forward(self, x):
-        x1 = self.backbone.conv1(x)
-        x1 = self.backbone.bn1(x1)
-        x1 = self.backbone.relu(x1)
-        x1 = self.backbone.maxpool(x1)
+        module_names = [n for n, _ in self.backbone.named_modules()]
+        if 'layer0' in module_names:
+            x1 = self.backbone.layer0(x)
+        else:
+            x1 = self.backbone.conv1(x)
+            x1 = self.backbone.bn1(x1)
+            x1 = self.backbone.relu(x1)
+            x1 = self.backbone.maxpool(x1)
 
         x1 = self.backbone.layer1(x1)
         x2 = self.backbone.layer2(x1)

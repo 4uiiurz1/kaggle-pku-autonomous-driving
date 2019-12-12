@@ -39,7 +39,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.utils.nms import nms
+from lib.postprocess.nms import nms
 
 
 def parse_args():
@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('--name', default=None)
     parser.add_argument('--score_th', default=0.1, type=float)
     parser.add_argument('--nms', default=False, type=str2bool)
-    parser.add_argument('--nms_th', default=5, type=float)
+    parser.add_argument('--nms_th', default=0.1, type=float)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -117,7 +117,8 @@ def main():
             val_labels,
             input_w=config['input_w'],
             input_h=config['input_h'],
-            transform=None)
+            transform=None,
+            lhalf=config['lhalf'])
         val_loader = torch.utils.data.DataLoader(
             val_set,
             batch_size=config['batch_size'],
@@ -205,7 +206,7 @@ def main():
 
     dst_name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
-        dst_name += '_nms%.1f' %args.nms_th
+        dst_name += '_nms%.2f' %args.nms_th
     pred_df.to_csv('preds/%s.csv' %dst_name, index=False)
     print(pred_df.head())
 

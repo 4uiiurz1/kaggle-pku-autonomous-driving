@@ -74,6 +74,8 @@ def convert_quat_to_euler(qx, qy, qz, qw):
 def decode(config, hm, reg, depth, eular=None, trig=None, quat=None, wh=None, mask=None,
            K=100, org_width=3384, org_height=2710):
     batch, cat, height, width = hm.size()
+    if config['lhalf']:
+        height *= 2
 
     hm = nms(torch.sigmoid(hm))
     if mask is not None:
@@ -84,6 +86,8 @@ def decode(config, hm, reg, depth, eular=None, trig=None, quat=None, wh=None, ma
 
     scores, inds, clses, ys, xs = _topk(hm, K=K)
     scores = scores.view(batch, K, 1)
+    if config['lhalf']:
+        ys += height / 2
 
     reg = _tranpose_and_gather_feat(reg, inds)
     reg = reg.view(batch, K, 2)
