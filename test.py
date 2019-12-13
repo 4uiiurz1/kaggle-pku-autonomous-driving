@@ -46,7 +46,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--name', default=None)
-    parser.add_argument('--score_th', default=0.6, type=float)
+    parser.add_argument('--score_th', default=0.3, type=float)
     parser.add_argument('--nms', default=True, type=str2bool)
     parser.add_argument('--nms_th', default=0.1, type=float)
     parser.add_argument('--show', action='store_true')
@@ -111,6 +111,7 @@ def main():
         heads['wh'] = 2
 
     preds = []
+    outputs = []
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
@@ -212,6 +213,8 @@ def main():
                 output['trig'] += outputs_fold[img_id]['trig'] / config['n_splits']
             if config['rot'] == 'quat':
                 output['quat'] += outputs_fold[img_id]['quat'] / config['n_splits']
+            if config['wh']:
+                output['wh'] += outputs_fold[img_id]['wh'] / config['n_splits']
 
         merged_outputs[img_id] = output
 
