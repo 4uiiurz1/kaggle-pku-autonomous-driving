@@ -172,6 +172,7 @@ def main():
                     trig=output['trig'] if config['rot'] == 'trig' else None,
                     quat=output['quat'] if config['rot'] == 'quat' else None,
                     wh=output['wh'] if config['wh'] else None,
+                    mask=mask,
                 )
                 dets = dets.detach().cpu().numpy()
 

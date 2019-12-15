@@ -16,7 +16,7 @@
   - NMS
   - Soft NMS
   - Weighted Points Fusion
-  - decode前のmapを加重平均するのもありかもしれない
+  - decode前のmapを加重平均するのもありかもしれない → とりあえず複数foldのアンサンブルはこれでやる
 
 ## Experiments
 ### NMS
@@ -33,7 +33,7 @@ None | 0.19142559036561727
 
 ### 1280 x 1024
 - resnet18_fpn
-- fold1
+- 1fold
 - val score_th=0.1
 - test score_th=0.6
 - nms (th=0.1) (testのみ)
@@ -44,9 +44,32 @@ model | val mAP | PublicLB
 120713 (w/o gn+ws, w/o wh, det=L1) | 0.23062173249021703 | 0.070
 120720 (w/ gn+ws, w/o wh, det=L1) | 0.23069422381934448 | 0.073
 120814 (w/ gn+ws, w/ wh, det=L1) | 0.23285714122775697 | 0.078
-120814 (w/ gn+ws, w/ wh, det=L1, lhalf) | 0.2357547338344435 | 0.070
+120823 (w/ gn+ws, w/ wh, det=L1, lhalf) | 0.2357547338344435 | 0.070
 
-### various architecture
-- fold1
-- val score_th=0.1
-- test score_th=0.6
+### Epochs
+- resnet18_fpn
+- 5fold
+- nms (th=0.1)
+- ensemble each fold preds by merging output maps
+- test score_th=0.3
+
+model | val mAP | PublicLB
+------|---------|----------
+120823 (30epochs) | 0.23875358249433876 | 0.095
+121123 (50epochs) | 0.2456167416237179 | 0.100
+
+### Various architecture
+- 5fold
+- ensemble each fold preds by merging output maps
+- test score_th=0.3
+
+#### w/o mask
+model | val mAP | PublicLB
+------|---------|----------
+resnet18_fpn_121123 | 0.2456167416237179  | 0.100
+resnet34_fpn_121307 | 0.24720156734031282 | 0.098
+
+#### w/ mask
+model | val mAP | PublicLB
+------|---------|----------
+resnet18_fpn_121123 | 0.24946095932243853 | 0.109

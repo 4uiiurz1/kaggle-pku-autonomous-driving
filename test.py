@@ -147,6 +147,7 @@ def main():
                         'trig': output['trig'][b:b+1].cpu() if config['rot'] == 'trig' else None,
                         'quat': output['quat'][b:b+1].cpu() if config['rot'] == 'quat' else None,
                         'wh': output['wh'][b:b+1].cpu() if config['wh'] else None,
+                        'mask': mask[b:b+1].cpu(),
                     }
 
                 dets = decode(
@@ -158,6 +159,7 @@ def main():
                     trig=output['trig'] if config['rot'] == 'trig' else None,
                     quat=output['quat'] if config['rot'] == 'quat' else None,
                     wh=output['wh'] if config['wh'] else None,
+                    mask=mask,
                 )
                 dets = dets.detach().cpu().numpy()
 
@@ -215,6 +217,7 @@ def main():
                 output['quat'] += outputs_fold[img_id]['quat'] / config['n_splits']
             if config['wh']:
                 output['wh'] += outputs_fold[img_id]['wh'] / config['n_splits']
+        output['mask'] = outputs[0][img_id]['mask']
 
         merged_outputs[img_id] = output
 
@@ -227,6 +230,7 @@ def main():
             trig=output['trig'] if config['rot'] == 'trig' else None,
             quat=output['quat'] if config['rot'] == 'quat' else None,
             wh=output['wh'] if config['wh'] else None,
+            mask=output['mask'],
         )
         det = det.numpy()[0]
 
