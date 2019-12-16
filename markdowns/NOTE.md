@@ -1,9 +1,10 @@
 ## Note
 - 6DoF (yaw, pitch, roll, x, y, z)を推定。
-- x, yはマスク画像から得られる画像座標とz(depth)から計算できるはずなので、zだけ推定すればいいはず。
-- zの推定はcenternetの3d pose estimationで使われているEigenの手法を参考にすればいいかも。z = 1 / sigmoid(output) − 1で推定する。ロスはオリジナルのgtとのL1 Loss。
+- ~~x, yはマスク画像から得られる画像座標とz(depth)から計算できるはずなので、zだけ推定すればいいはず。~~ →誤り。
+- zの推定はcenternetの3d pose estimationで使われているEigenの手法を参考にすればいいかも。z = 1 / sigmoid(output) − 1で推定する。ロスはオリジナルのgtとのL1 Loss。→直接回帰した方が精度良い。
 - 640 x 512
 - 960 x 768
+- 1280 x 1024
 - 姿勢の学習方法
   - 直接回帰
   - いくつかのビンにわけて各ビン内で回帰
@@ -17,11 +18,14 @@
   - Soft NMS
   - Weighted Points Fusion
   - decode前のmapを加重平均するのもありかもしれない → とりあえず複数foldのアンサンブルはこれでやる
+- 重複・類似画像がテストデータにあるかどうか調べる。
+  - 重複画像のアンサンブル結果をそれぞれの画像のpredにする。
 
 ## Experiments
 ### NMS
 - resnet18_fpn_120123
 - fold1
+- w/o mask
 
 NMS  | mAP
 -----|---
@@ -37,6 +41,7 @@ None | 0.19142559036561727
 - val score_th=0.1
 - test score_th=0.6
 - nms (th=0.1) (testのみ)
+- w/o mask
 
 model | val mAP | PublicLB
 ------|---------|----------
@@ -52,6 +57,8 @@ model | val mAP | PublicLB
 - nms (th=0.1)
 - ensemble each fold preds by merging output maps
 - test score_th=0.3
+- w/o mask
+- 1280 x 1024
 
 model | val mAP | PublicLB
 ------|---------|----------
@@ -62,6 +69,7 @@ model | val mAP | PublicLB
 - 5fold
 - ensemble each fold preds by merging output maps
 - test score_th=0.3
+- 1280 x 1024
 
 #### w/o mask
 model | val mAP | PublicLB

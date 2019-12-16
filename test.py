@@ -177,12 +177,6 @@ def main():
                 pbar.update(1)
             pbar.close()
 
-        df['PredictionString'] = preds_fold
-        name = '%s_%d_%.2f' %(args.name, fold + 1, args.score_th)
-        if args.nms:
-            name += '_nms%.2f' %args.nms_th
-        df.to_csv('submissions/%s.csv' %name, index=False)
-
         outputs.append(outputs_fold)
 
         torch.cuda.empty_cache()
@@ -221,6 +215,49 @@ def main():
 
         merged_outputs[img_id] = output
 
+    torch.save(merged_outputs, 'outputs/%s.pth' %args.name)
+
+    # ensemble duplicate images
+    dup_df = pd.read_csv('processed/test_image_hash.csv')
+    dups = dup_df.hash.value_counts()
+    dups = dups.loc[dups>1]
+
+    for i in range(len(dups)):
+        img_ids = dup_df[dup_df.hash == dups.index[i]].ImageId
+
+        output = {
+            'hm': 0,
+            'reg': 0,
+            'depth': 0,
+            'eular': 0 if config['rot'] == 'eular' else None,
+            'trig': 0 if config['rot'] == 'trig' else None,
+            'quat': 0 if config['rot'] == 'quat' else None,
+            'wh': 0 if config['wh'] else None,
+            'mask': 0,
+        }
+        for img_id in img_ids:
+            output['hm'] += merged_outputs[img_id]['hm'] / len(img_ids)
+            output['reg'] += merged_outputs[img_id]['reg'] / len(img_ids)
+            output['depth'] += merged_outputs[img_id]['depth'] / len(img_ids)
+            if config['rot'] == 'eular':
+                output['eular'] += merged_outputs[img_id]['eular'] / len(img_ids)
+            if config['rot'] == 'trig':
+                output['trig'] += merged_outputs[img_id]['trig'] / len(img_ids)
+            if config['rot'] == 'quat':
+                output['quat'] += merged_outputs[img_id]['quat'] / len(img_ids)
+            if config['wh']:
+                output['wh'] += merged_outputs[img_id]['wh'] / len(img_ids)
+            output['mask'] += merged_outputs[img_id]['mask'] / len(img_ids)
+
+        for img_id in img_ids:
+            merged_outputs[img_id] = output
+
+    # decode
+    for i in tqdm(range(len(df))):
+        img_id = df.loc[i, 'ImageId']
+
+        output = merged_outputs[img_id]
+
         det = decode(
             config,
             output['hm'],
@@ -239,11 +276,12 @@ def main():
 
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 
-    torch.save(merged_outputs, 'outputs/%s.pth' %args.name)
 
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
         name += '_nms%.2f' %args.nms_th
+    if args.ensemble_dup:
+        name += '_ensemble_dup'
     df.to_csv('submissions/%s.csv' %name, index=False)
 
 
