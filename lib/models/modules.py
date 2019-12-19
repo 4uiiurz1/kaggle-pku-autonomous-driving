@@ -18,6 +18,5 @@ class Conv2d(nn.Conv2d):
             weight = weight - weight_mean
             std = weight.view(weight.size(0), -1).std(dim=1).view(-1, 1, 1, 1) + 1e-5
             weight = weight / std.expand_as(weight)
-            return self.conv2d_forward(input, weight)
         return F.conv2d(input, weight, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
