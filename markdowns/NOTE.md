@@ -21,6 +21,11 @@
 - 重複・類似画像がテストデータにあるかどうか調べる。
   - 重複画像のアンサンブル結果をそれぞれの画像のpredにする。
 
+## TODO
+- [ ] wh用いて車両crop→それぞれ回帰
+- [ ] hflip TTA
+- [ ] pseudo labeling
+
 ## Experiments
 ### NMS
 - resnet18_fpn_120123
@@ -87,11 +92,14 @@ resnet50_v1d_fpn_121512 | 0.25247039883369304 | 0.100
 resnet34_v1b_fpn_121721 | 0.24874580307912306 |
 
 #### gn+ws
-- 5fold
-- ensemble each fold preds by merging output maps
-- test score_th=0.3
-- 1280 x 1024
+- resnet18_fpn
+- 1fold
+- val score_th=0.1
+- test score_th=0.6
+- nms (th=0.1) (testのみ)
+- w/o mask
 
 model | val mAP | PublicLB
 ------|---------|----------
-resnet18_fpn_121123 | 0.2456167416237179  | 0.100
+121123 (bn) | 0.24137380667425745 |
+122001 (gn+ws) | 0.23614911826902013 | 0.082

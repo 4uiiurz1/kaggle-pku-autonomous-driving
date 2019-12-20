@@ -50,7 +50,7 @@ def parse_args():
 
     parser.add_argument('--name', default=None,
                         help='model name: (default: arch+timestamp)')
-    parser.add_argument('--epochs', default=30, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('-b', '--batch_size', default=4, type=int,
                         metavar='N', help='mini-batch size (default: 4)')
@@ -63,8 +63,8 @@ def parse_args():
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
     parser.add_argument('--wh', default=True, type=str2bool)
-    parser.add_argument('--gn', default=True, type=str2bool)
-    parser.add_argument('--ws', default=True, type=str2bool)
+    parser.add_argument('--gn', default=False, type=str2bool)
+    parser.add_argument('--ws', default=False, type=str2bool)
     parser.add_argument('--lhalf', default=True, type=str2bool)
 
     # loss
@@ -98,7 +98,7 @@ def parse_args():
     parser.add_argument('--gamma', default=2/3, type=float)
 
     # dataset
-    parser.add_argument('--cv', default=False, type=str2bool)
+    parser.add_argument('--cv', default=True, type=str2bool)
     parser.add_argument('--n_splits', default=5, type=int)
 
     # augmentation

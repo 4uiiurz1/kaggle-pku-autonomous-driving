@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 import pretrainedmodels
 import timm
 
@@ -58,6 +59,10 @@ class ResNetFPN(nn.Module):
             pretrained = 'imagenet' if pretrained else None
             self.backbone = pretrainedmodels.se_resnext101_32x4d(pretrained=pretrained)
             num_bottleneck_filters = 2048
+        elif backbone == 'resnet34_v1b':
+            self.backbone = timm.create_model('gluon_resnet34_v1b', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
+            num_bottleneck_filters = 512
         elif backbone == 'resnet50_v1d':
             self.backbone = timm.create_model('gluon_resnet50_v1d', pretrained=pretrained)
             convert_to_inplace_relu(self.backbone)
@@ -66,6 +71,23 @@ class ResNetFPN(nn.Module):
             self.backbone = timm.create_model('gluon_resnet101_v1d', pretrained=pretrained)
             convert_to_inplace_relu(self.backbone)
             num_bottleneck_filters = 2048
+        elif backbone == 'resnext50_32x4d':
+            self.backbone = timm.create_model('resnext50_32x4d', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
+            num_bottleneck_filters = 2048
+        elif backbone == 'resnext50d_32x4d':
+            self.backbone = timm.create_model('resnext50d_32x4d', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
+            num_bottleneck_filters = 2048
+        elif backbone == 'seresnext26_32x4d':
+            self.backbone = timm.create_model('seresnext26_32x4d', pretrained=pretrained)
+            convert_to_inplace_relu(self.backbone)
+            num_bottleneck_filters = 2048
+        elif backbone == 'resnet18_ctdet':
+            self.backbone = models.resnet18()
+            state_dict = torch.load('pretrained_weights/ctdet_coco_resdcn18.pth')['state_dict']
+            self.backbone.load_state_dict(state_dict, strict=False)
+            num_bottleneck_filters = 512
         else:
             raise NotImplementedError
 

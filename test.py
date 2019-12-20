@@ -115,7 +115,8 @@ def main():
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
-        model = get_model(config['arch'], heads=heads)
+        model = get_model(config['arch'], heads=heads, gn=config['gn'],
+                          ws=config['ws'], freeze_bn=config['freeze_bn'])
         model = model.cuda()
 
         model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
@@ -182,7 +183,12 @@ def main():
         torch.cuda.empty_cache()
 
         if not config['cv']:
-            break
+            df['PredictionString'] = preds_fold
+            name = '%s_1_%.2f' %(args.name, args.score_th)
+            if args.nms:
+                name += '_nms%.2f' %args.nms_th
+            df.to_csv('submissions/%s.csv' %name, index=False)
+            return
 
     # merge
     merged_outputs = {}
@@ -214,8 +220,6 @@ def main():
         output['mask'] = outputs[0][img_id]['mask']
 
         merged_outputs[img_id] = output
-
-    torch.save(merged_outputs, 'outputs/%s.pth' %args.name)
 
     # ensemble duplicate images
     dup_df = pd.read_csv('processed/test_image_hash.csv')
@@ -252,6 +256,8 @@ def main():
         for img_id in img_ids:
             merged_outputs[img_id] = output
 
+    torch.save(merged_outputs, 'outputs/%s.pth' %args.name)
+
     # decode
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
@@ -280,8 +286,6 @@ def main():
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
         name += '_nms%.2f' %args.nms_th
-    if args.ensemble_dup:
-        name += '_ensemble_dup'
     df.to_csv('submissions/%s.csv' %name, index=False)
 
 

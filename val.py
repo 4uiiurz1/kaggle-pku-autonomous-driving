@@ -127,7 +127,8 @@ def main():
             # pin_memory=True,
         )
 
-        model = get_model(config['arch'], heads=heads)
+        model = get_model(config['arch'], heads=heads, gn=config['gn'],
+                          ws=config['ws'], freeze_bn=config['freeze_bn'])
         model = model.cuda()
 
         model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
