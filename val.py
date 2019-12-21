@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument('--score_th', default=0.1, type=float)
     parser.add_argument('--nms', default=False, type=str2bool)
     parser.add_argument('--nms_th', default=0.1, type=float)
+    parser.add_argument('--hflip', default=False, type=str2bool)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -164,6 +165,36 @@ def main():
                 #     postfix[head + '_loss'] = avg_meters[head].avg
                 # pbar.set_postfix(postfix)
 
+                if args.hflip:
+                    output_hf = model(torch.flip(input, (-1,)))
+                    output_hf['hm'] = torch.flip(output_hf['hm'], (-1,))
+                    output_hf['reg'] = torch.flip(output_hf['reg'], (-1,))
+                    output_hf['reg'][:, 0] = 1 - output_hf['reg'][:, 0]
+                    output_hf['depth'] = torch.flip(output_hf['depth'], (-1,))
+                    if config['rot'] == 'trig':
+                        output_hf['trig'] = torch.flip(output_hf['trig'], (-1,))
+                        yaw = torch.atan2(output_hf['trig'][:, 1], output_hf['trig'][:, 0])
+                        yaw *= -1.0
+                        output_hf['trig'][:, 0] = torch.cos(yaw)
+                        output_hf['trig'][:, 1] = torch.sin(yaw)
+                        roll = torch.atan2(output_hf['trig'][:, 5], output_hf['trig'][:, 4])
+                        roll = rotate(roll, -np.pi)
+                        roll *= -1.0
+                        roll = rotate(roll, np.pi)
+                        output_hf['trig'][:, 4] = torch.cos(roll)
+                        output_hf['trig'][:, 5] = torch.sin(roll)
+
+                    if config['wh']:
+                        output_hf['wh'] = torch.flip(output_hf['wh'], (-1,))
+
+                    output['hm'] = (output['hm'] + output_hf['hm']) / 2
+                    output['reg'] = (output['reg'] + output_hf['reg']) / 2
+                    output['depth'] = (output['depth'] + output_hf['depth']) / 2
+                    if config['rot'] == 'trig':
+                        output['trig'] = (output['trig'] + output_hf['trig']) / 2
+                    if config['wh']:
+                        output['wh'] = (output['wh'] + output_hf['wh']) / 2
+
                 dets = decode(
                     config,
                     output['hm'],
@@ -206,10 +237,12 @@ def main():
 
     # print('loss: %f' %avg_meters['loss'].avg)
 
-    dst_name = '%s_%.2f' %(args.name, args.score_th)
+    name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
-        dst_name += '_nms%.2f' %args.nms_th
-    pred_df.to_csv('preds/%s.csv' %dst_name, index=False)
+        name += '_nms%.2f' %args.nms_th
+    if args.hflip:
+        name += '_hf'
+    pred_df.to_csv('preds/%s.csv' %name, index=False)
     print(pred_df.head())
 
 

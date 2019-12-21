@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument('--score_th', default=0.3, type=float)
     parser.add_argument('--nms', default=True, type=str2bool)
     parser.add_argument('--nms_th', default=0.1, type=float)
+    parser.add_argument('--hflip', default=False, type=str2bool)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -138,10 +139,40 @@ def main():
                 output = model(input)
                 # print(output)
 
+                if args.hflip:
+                    output_hf = model(torch.flip(input, (-1,)))
+                    output_hf['hm'] = torch.flip(output_hf['hm'], (-1,))
+                    output_hf['reg'] = torch.flip(output_hf['reg'], (-1,))
+                    output_hf['reg'][:, 0] = 1 - output_hf['reg'][:, 0]
+                    output_hf['depth'] = torch.flip(output_hf['depth'], (-1,))
+                    if config['rot'] == 'trig':
+                        output_hf['trig'] = torch.flip(output_hf['trig'], (-1,))
+                        yaw = torch.atan2(output_hf['trig'][:, 1], output_hf['trig'][:, 0])
+                        yaw *= -1.0
+                        output_hf['trig'][:, 0] = torch.cos(yaw)
+                        output_hf['trig'][:, 1] = torch.sin(yaw)
+                        roll = torch.atan2(output_hf['trig'][:, 5], output_hf['trig'][:, 4])
+                        roll = rotate(roll, -np.pi)
+                        roll *= -1.0
+                        roll = rotate(roll, np.pi)
+                        output_hf['trig'][:, 4] = torch.cos(roll)
+                        output_hf['trig'][:, 5] = torch.sin(roll)
+
+                    if config['wh']:
+                        output_hf['wh'] = torch.flip(output_hf['wh'], (-1,))
+
+                    output['hm'] = (output['hm'] + output_hf['hm']) / 2
+                    output['reg'] = (output['reg'] + output_hf['reg']) / 2
+                    output['depth'] = (output['depth'] + output_hf['depth']) / 2
+                    if config['rot'] == 'trig':
+                        output['trig'] = (output['trig'] + output_hf['trig']) / 2
+                    if config['wh']:
+                        output['wh'] = (output['wh'] + output_hf['wh']) / 2
+
                 for b in range(len(batch['img_path'])):
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][b]))[0]
                     outputs_fold[img_id] = {
-                        'hm': output['hm'][b:b+1].detach().cpu(),
+                        'hm': output['hm'][b:b+1].cpu(),
                         'reg': output['reg'][b:b+1].cpu(),
                         'depth': output['depth'][b:b+1].cpu(),
                         'eular': output['eular'][b:b+1].cpu() if config['rot'] == 'eular' else None,
@@ -169,11 +200,11 @@ def main():
                         det = nms(det, dist_th=args.nms_th)
                     preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
 
-                    if args.show:
-                        img = cv2.imread(batch['img_path'][k])
-                        img_pred = visualize(img, det[det[:, 6] > args.score_th])
-                        plt.imshow(img_pred[..., ::-1])
-                        plt.show()
+                    # if args.show:
+                    #     img = cv2.imread(batch['img_path'][k])
+                    #     img_pred = visualize(img, det[det[:, 6] > args.score_th])
+                    #     plt.imshow(img_pred[..., ::-1])
+                    #     plt.show()
 
                 pbar.update(1)
             pbar.close()
@@ -256,7 +287,11 @@ def main():
         for img_id in img_ids:
             merged_outputs[img_id] = output
 
-    torch.save(merged_outputs, 'outputs/%s.pth' %args.name)
+    name = args.name
+    if args.hflip:
+        name += '_hf'
+    torch.save(merged_outputs, 'outputs/%s.pth' %name)
+    # merged_outputs = torch.load('outputs/%s.pth' %name)
 
     # decode
     for i in tqdm(range(len(df))):
@@ -280,12 +315,20 @@ def main():
         if args.nms:
             det = nms(det, dist_th=args.nms_th)
 
+        if args.show:
+            img = cv2.imread('inputs/test_images/%s.jpg' %img_id)
+            img_pred = visualize(img, det[det[:, 6] > args.score_th])
+            plt.imshow(img_pred[..., ::-1])
+            plt.show()
+
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 
 
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
         name += '_nms%.2f' %args.nms_th
+    if args.hflip:
+        name += '_hf'
     df.to_csv('submissions/%s.csv' %name, index=False)
 
 

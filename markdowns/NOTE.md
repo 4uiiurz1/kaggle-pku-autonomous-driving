@@ -23,8 +23,9 @@
 
 ## TODO
 - [ ] wh用いて車両crop→それぞれ回帰
-- [ ] hflip TTA
+- [x] hflip TTA
 - [ ] pseudo labeling
+- [ ] ensemble
 
 ## Experiments
 ### NMS
@@ -103,3 +104,11 @@ model | val mAP | PublicLB
 ------|---------|----------
 121123 (bn) | 0.24137380667425745 |
 122001 (gn+ws) | 0.23614911826902013 | 0.082
+
+#### hflip tta
+- resnet50_v1d_fpn_121512
+
+model | val mAP | PublicLB
+------|---------|----------
+baseline | 0.25247039883369304 | 0.100
+hflip    | 0.2529201030598733  |
