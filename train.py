@@ -58,6 +58,8 @@ def parse_args():
     # model
     parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18_fpn',
                         help='model architecture: (default: resnet18_fpn)')
+    parser.add_argument('--head_conv', default=128, type=int)
+    parser.add_argument('--num_filters', default='256,256,256')
     parser.add_argument('--input_w', default=1280, type=int)
     parser.add_argument('--input_h', default=1024, type=int)
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
@@ -241,6 +243,8 @@ def main():
     if config['name'] is None:
         config['name'] = '%s_%s' % (config['arch'], datetime.now().strftime('%m%d%H'))
 
+    config['num_filters'] = [int(n) for n in config['num_filters'].split(',')]
+
     if not os.path.exists('models/%s' % config['name']):
         os.makedirs('models/%s' % config['name'])
 
@@ -382,8 +386,11 @@ def main():
         )
 
         # create model
-        model = get_model(config['arch'], heads=heads, gn=config['gn'],
-                          ws=config['ws'], freeze_bn=config['freeze_bn'])
+        model = get_model(config['arch'], heads=heads,
+                          head_conv=config['head_conv'],
+                          num_filters=config['num_filters'],
+                          gn=config['gn'], ws=config['ws'],
+                          freeze_bn=config['freeze_bn'])
         model = model.cuda()
         # print(model)
 
