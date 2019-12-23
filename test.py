@@ -116,8 +116,11 @@ def main():
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
-        model = get_model(config['arch'], heads=heads, gn=config['gn'],
-                          ws=config['ws'], freeze_bn=config['freeze_bn'])
+        model = get_model(config['arch'], heads=heads,
+                          head_conv=config['head_conv'],
+                          num_filters=config['num_filters'],
+                          gn=config['gn'], ws=config['ws'],
+                          freeze_bn=config['freeze_bn'])
         model = model.cuda()
 
         model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
@@ -200,11 +203,11 @@ def main():
                         det = nms(det, dist_th=args.nms_th)
                     preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
 
-                    # if args.show:
-                    #     img = cv2.imread(batch['img_path'][k])
-                    #     img_pred = visualize(img, det[det[:, 6] > args.score_th])
-                    #     plt.imshow(img_pred[..., ::-1])
-                    #     plt.show()
+                    if args.show and not config['cv']:
+                        img = cv2.imread(batch['img_path'][k])
+                        img_pred = visualize(img, det[det[:, 6] > args.score_th])
+                        plt.imshow(img_pred[..., ::-1])
+                        plt.show()
 
                 pbar.update(1)
             pbar.close()

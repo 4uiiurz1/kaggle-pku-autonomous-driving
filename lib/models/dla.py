@@ -405,8 +405,9 @@ class Interpolate(nn.Module):
 
 
 class DLAFPN(nn.Module):
-    def __init__(self, base_name, heads, num_filters=256,
-                   gn=False, ws=False, freeze_bn=False):
+    def __init__(self, base_name, heads, head_conv=128,
+                 num_filters=[256, 256, 256],
+                 gn=False, ws=False, freeze_bn=False):
         super().__init__()
 
         self.heads = heads
@@ -421,50 +422,50 @@ class DLAFPN(nn.Module):
                     m.bias.requires_grad = False
 
         self.lateral4 = nn.Sequential(
-            Conv2d(num_bottleneck_filters, num_filters,
+            Conv2d(num_bottleneck_filters, num_filters[0],
                    kernel_size=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters[0]),
             nn.ReLU(inplace=True))
         self.lateral3 = nn.Sequential(
-            Conv2d(num_bottleneck_filters // 2, num_filters,
+            Conv2d(num_bottleneck_filters // 2, num_filters[0],
                    kernel_size=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters[0]) if gn else nn.BatchNorm2d(num_filters[0]),
             nn.ReLU(inplace=True))
         self.lateral2 = nn.Sequential(
-            Conv2d(num_bottleneck_filters // 4, num_filters,
+            Conv2d(num_bottleneck_filters // 4, num_filters[1],
                    kernel_size=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters[1]) if gn else nn.BatchNorm2d(num_filters[1]),
             nn.ReLU(inplace=True))
         self.lateral1 = nn.Sequential(
-            Conv2d(num_bottleneck_filters // 8, num_filters,
+            Conv2d(num_bottleneck_filters // 8, num_filters[2],
                    kernel_size=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters[2]),
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
-            Conv2d(num_filters, num_filters,
+            Conv2d(num_filters[0], num_filters[1],
                    kernel_size=3, padding=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters[1]) if gn else nn.BatchNorm2d(num_filters[1]),
             nn.ReLU(inplace=True))
         self.decode2 = nn.Sequential(
-            Conv2d(num_filters, num_filters,
+            Conv2d(num_filters[1], num_filters[2],
                    kernel_size=3, padding=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters[2]) if gn else nn.BatchNorm2d(num_filters[2]),
             nn.ReLU(inplace=True))
         self.decode1 = nn.Sequential(
-            Conv2d(num_filters, num_filters,
+            Conv2d(num_filters[2], num_filters[2],
                    kernel_size=3, padding=1, bias=False, ws=ws),
-            nn.GroupNorm(32, num_filters) if gn else nn.BatchNorm2d(num_filters),
+            nn.GroupNorm(32, num_filters[2]) if gn else nn.BatchNorm2d(num_filters[2]),
             nn.ReLU(inplace=True))
 
         for head in sorted(self.heads):
             num_output = self.heads[head]
             fc = nn.Sequential(
-                Conv2d(num_filters, num_filters // 2,
+                Conv2d(num_filters[2], head_conv,
                        kernel_size=3, padding=1, bias=False, ws=ws),
-                nn.GroupNorm(32, num_filters // 2) if gn else nn.BatchNorm2d(num_filters // 2),
+                nn.GroupNorm(32, head_conv) if gn else nn.BatchNorm2d(head_conv),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(num_filters // 2, num_output,
+                nn.Conv2d(head_conv, num_output,
                           kernel_size=1))
             if 'hm' in head:
                 fc[-1].bias.data.fill_(-2.19)
@@ -494,9 +495,11 @@ class DLAFPN(nn.Module):
         return ret
 
 
-def get_dla34(heads, pretrained, num_filters=256,
+def get_dla34(heads, pretrained, head_conv=128,
+              num_filters=[256, 256, 256],
               gn=False, ws=False, freeze_bn=False):
-    model = DLAFPN('dla34', heads, num_filters=num_filters,
+    model = DLAFPN('dla34', heads, head_conv=head_conv,
+                   num_filters=num_filters,
                    gn=gn, ws=ws, freeze_bn=freeze_bn)
     state_dict_old = torch.load('pretrained_weights/%s.pth' %pretrained)['state_dict']
     state_dict = OrderedDict()

@@ -73,6 +73,7 @@ def parse_args():
     parser.add_argument('--hm_loss', default='FocalLoss')
     parser.add_argument('--reg_loss', default='L1Loss')
     parser.add_argument('--wh_loss', default='L1Loss')
+    parser.add_argument('--wh_weight', default=0.1, type=float)
     parser.add_argument('--depth_loss', default='L1Loss')
     parser.add_argument('--eular_loss', default='L1Loss')
     parser.add_argument('--trig_loss', default='L1Loss')
@@ -158,7 +159,7 @@ def train(config, heads, train_loader, model, criterion, optimizer, epoch):
             losses[head] = criterion[head](output[head], batch[head].cuda(),
                                            mask if head == 'hm' else reg_mask)
             if head == 'wh':
-                loss += 0.1 * losses[head]
+                loss += config['wh_weight'] * losses[head]
             else:
                 loss += losses[head]
         losses['loss'] = loss
@@ -207,7 +208,7 @@ def validate(config, heads, val_loader, model, criterion):
                 losses[head] = criterion[head](output[head], batch[head].cuda(),
                                                mask if head == 'hm' else reg_mask)
                 if head == 'wh':
-                    loss += 0.1 * losses[head]
+                    loss += config['wh_weight'] * losses[head]
                 else:
                     loss += losses[head]
             losses['loss'] = loss
