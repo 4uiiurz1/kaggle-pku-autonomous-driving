@@ -8,6 +8,7 @@ import random
 import warnings
 from datetime import datetime
 import yaml
+import gc
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -60,6 +61,7 @@ def parse_args():
                         help='model architecture: (default: resnet18_fpn)')
     parser.add_argument('--head_conv', default=128, type=int)
     parser.add_argument('--num_filters', default='256,256,256')
+    parser.add_argument('--dcn', default=False, type=str2bool)
     parser.add_argument('--input_w', default=1280, type=int)
     parser.add_argument('--input_h', default=1024, type=int)
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
@@ -68,6 +70,10 @@ def parse_args():
     parser.add_argument('--gn', default=False, type=str2bool)
     parser.add_argument('--ws', default=False, type=str2bool)
     parser.add_argument('--lhalf', default=True, type=str2bool)
+
+    # pseudo labeling
+    parser.add_argument('--load_model', default=None)
+    parser.add_argument('--pseudo_label', default=None)
 
     # loss
     parser.add_argument('--hm_loss', default='FocalLoss')
@@ -269,6 +275,15 @@ def main():
     mask_paths = np.array('inputs/train_masks/' + df['ImageId'].values + '.jpg')
     labels = np.array([convert_str_to_labels(s) for s in df['PredictionString']])
 
+    test_img_paths = None
+    test_mask_paths = None
+    test_outputs = None
+    if config['pseudo_label'] is not None:
+        test_df = pd.read_csv('inputs/sample_submission.csv')
+        test_img_paths = np.array('inputs/test_images/' + test_df['ImageId'].values + '.jpg')
+        test_mask_paths = np.array('inputs/test_masks/' + test_df['ImageId'].values + '.jpg')
+        test_outputs = torch.load('outputs/%s' %config['pseudo_label'])
+
     if config['resume']:
         checkpoint = torch.load('models/%s/checkpoint.pth.tar' % config['name'])
 
@@ -350,6 +365,11 @@ def main():
         train_mask_paths, val_mask_paths = mask_paths[train_idx], mask_paths[val_idx]
         train_labels, val_labels = labels[train_idx], labels[val_idx]
 
+        # if config['pseudo_label'] is not None:
+        #     train_img_paths = np.hstack((train_img_paths, test_img_paths))
+        #     train_mask_paths = np.hstack((train_mask_paths, test_mask_paths))
+        #     train_labels = np.vstack((train_labels, np.zeros((len(test_img_paths), train_labels.shape[1]))))
+
         # train
         train_set = Dataset(
             train_img_paths,
@@ -361,7 +381,10 @@ def main():
             lhalf=config['lhalf'],
             hflip=config['hflip_p'] if config['hflip'] else 0,
             scale=config['scale_p'] if config['scale'] else 0,
-            scale_limit=config['scale_limit'])
+            scale_limit=config['scale_limit'],
+            test_img_paths=test_img_paths,
+            test_mask_paths=test_mask_paths,
+            test_outputs=test_outputs)
         train_loader = torch.utils.data.DataLoader(
             train_set,
             batch_size=config['batch_size'],
@@ -390,10 +413,13 @@ def main():
         model = get_model(config['arch'], heads=heads,
                           head_conv=config['head_conv'],
                           num_filters=config['num_filters'],
+                          dcn=config['dcn'],
                           gn=config['gn'], ws=config['ws'],
                           freeze_bn=config['freeze_bn'])
         model = model.cuda()
-        # print(model)
+
+        if config['load_model'] is not None:
+            model.load_state_dict(torch.load('models/%s/model_%d.pth' %(config['load_model'], fold+1)))
 
         params = filter(lambda p: p.requires_grad, model.parameters())
         if config['optimizer'] == 'Adam':
@@ -499,7 +525,12 @@ def main():
         print(results)
         results.to_csv('models/%s/results.csv' % config['name'], index=False)
 
+        del model
         torch.cuda.empty_cache()
+
+        del train_set, train_loader
+        del val_set, val_loader
+        gc.collect()
 
         if not config['cv']:
             break

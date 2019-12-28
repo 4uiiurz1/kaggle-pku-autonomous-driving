@@ -111,8 +111,23 @@ def main():
     if config['wh']:
         heads['wh'] = 2
 
+    merged_outputs = {}
+    for i in tqdm(range(len(df))):
+        img_id = df.loc[i, 'ImageId']
+
+        output = {
+            'hm': 0,
+            'reg': 0,
+            'depth': 0,
+            'eular': 0 if config['rot'] == 'eular' else None,
+            'trig': 0 if config['rot'] == 'trig' else None,
+            'quat': 0 if config['rot'] == 'quat' else None,
+            'wh': 0 if config['wh'] else None,
+        }
+
+        merged_outputs[img_id] = output
+
     preds = []
-    outputs = []
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
@@ -174,6 +189,7 @@ def main():
 
                 for b in range(len(batch['img_path'])):
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][b]))[0]
+
                     outputs_fold[img_id] = {
                         'hm': output['hm'][b:b+1].cpu(),
                         'reg': output['reg'][b:b+1].cpu(),
@@ -184,6 +200,19 @@ def main():
                         'wh': output['wh'][b:b+1].cpu() if config['wh'] else None,
                         'mask': mask[b:b+1].cpu(),
                     }
+
+                    merged_outputs[img_id]['hm'] += outputs_fold[img_id]['hm'] / config['n_splits']
+                    merged_outputs[img_id]['reg'] += outputs_fold[img_id]['reg'] / config['n_splits']
+                    merged_outputs[img_id]['depth'] += outputs_fold[img_id]['depth'] / config['n_splits']
+                    if config['rot'] == 'eular':
+                        merged_outputs[img_id]['eular'] += outputs_fold[img_id]['eular'] / config['n_splits']
+                    if config['rot'] == 'trig':
+                        merged_outputs[img_id]['trig'] += outputs_fold[img_id]['trig'] / config['n_splits']
+                    if config['rot'] == 'quat':
+                        merged_outputs[img_id]['quat'] += outputs_fold[img_id]['quat'] / config['n_splits']
+                    if config['wh']:
+                        merged_outputs[img_id]['wh'] += outputs_fold[img_id]['wh'] / config['n_splits']
+                    merged_outputs[img_id]['mask'] = outputs_fold[img_id]['mask']
 
                 dets = decode(
                     config,
@@ -212,10 +241,6 @@ def main():
                 pbar.update(1)
             pbar.close()
 
-        outputs.append(outputs_fold)
-
-        torch.cuda.empty_cache()
-
         if not config['cv']:
             df['PredictionString'] = preds_fold
             name = '%s_1_%.2f' %(args.name, args.score_th)
@@ -223,37 +248,6 @@ def main():
                 name += '_nms%.2f' %args.nms_th
             df.to_csv('submissions/%s.csv' %name, index=False)
             return
-
-    # merge
-    merged_outputs = {}
-    for i in tqdm(range(len(df))):
-        img_id = df.loc[i, 'ImageId']
-
-        output = {
-            'hm': 0,
-            'reg': 0,
-            'depth': 0,
-            'eular': 0 if config['rot'] == 'eular' else None,
-            'trig': 0 if config['rot'] == 'trig' else None,
-            'quat': 0 if config['rot'] == 'quat' else None,
-            'wh': 0 if config['wh'] else None,
-        }
-
-        for outputs_fold in outputs:
-            output['hm'] += outputs_fold[img_id]['hm'] / config['n_splits']
-            output['reg'] += outputs_fold[img_id]['reg'] / config['n_splits']
-            output['depth'] += outputs_fold[img_id]['depth'] / config['n_splits']
-            if config['rot'] == 'eular':
-                output['eular'] += outputs_fold[img_id]['eular'] / config['n_splits']
-            if config['rot'] == 'trig':
-                output['trig'] += outputs_fold[img_id]['trig'] / config['n_splits']
-            if config['rot'] == 'quat':
-                output['quat'] += outputs_fold[img_id]['quat'] / config['n_splits']
-            if config['wh']:
-                output['wh'] += outputs_fold[img_id]['wh'] / config['n_splits']
-        output['mask'] = outputs[0][img_id]['mask']
-
-        merged_outputs[img_id] = output
 
     # ensemble duplicate images
     dup_df = pd.read_csv('processed/test_image_hash.csv')

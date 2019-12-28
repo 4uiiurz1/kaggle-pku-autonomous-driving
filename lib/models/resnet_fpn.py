@@ -6,6 +6,7 @@ import pretrainedmodels
 import timm
 
 from .modules import Conv2d
+from .DCNv2.dcn_v2 import DCN
 
 
 def fill_fc_weights(layers):
@@ -27,7 +28,7 @@ def convert_to_inplace_relu(model):
 class ResNetFPN(nn.Module):
     def __init__(self, backbone, heads, head_conv=128,
                  num_filters=[256, 256, 256], pretrained=True,
-                 gn=False, ws=False, freeze_bn=False):
+                 dcn=False, gn=False, ws=False, freeze_bn=False):
         super().__init__()
 
         self.heads = heads
@@ -120,6 +121,8 @@ class ResNetFPN(nn.Module):
             nn.ReLU(inplace=True))
 
         self.decode3 = nn.Sequential(
+            DCN(num_filters[0], num_filters[1],
+                kernel_size=3, padding=1, stride=1) if dcn else \
             Conv2d(num_filters[0], num_filters[1],
                    kernel_size=3, padding=1, bias=False, ws=ws),
             nn.GroupNorm(32, num_filters[1]) if gn else nn.BatchNorm2d(num_filters[1]),
