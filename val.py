@@ -131,6 +131,7 @@ def main():
         model = get_model(config['arch'], heads=heads,
                           head_conv=config['head_conv'],
                           num_filters=config['num_filters'],
+                          dcn=config['dcn'],
                           gn=config['gn'], ws=config['ws'],
                           freeze_bn=config['freeze_bn'])
         model = model.cuda()
