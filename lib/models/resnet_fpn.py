@@ -90,6 +90,10 @@ class ResNetFPN(nn.Module):
             state_dict = torch.load('pretrained_weights/ctdet_coco_resdcn18.pth')['state_dict']
             self.backbone.load_state_dict(state_dict, strict=False)
             num_bottleneck_filters = 512
+        elif backbone == 'resnet50_maskrcnn':
+            self.backbone = models.detection.maskrcnn_resnet50_fpn(pretrained=pretrained).backbone.body
+            print(self.backbone)
+            num_bottleneck_filters = 2048
         else:
             raise NotImplementedError
 
