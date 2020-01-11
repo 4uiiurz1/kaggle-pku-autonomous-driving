@@ -60,7 +60,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open('models/%s/config.yml' % args.name, 'r') as f:
+    with open('models/detection/%s/config.yml' % args.name, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     print('-'*20)
@@ -136,7 +136,7 @@ def main():
                           freeze_bn=config['freeze_bn'])
         model = model.cuda()
 
-        model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
+        model_path = 'models/detection/%s/model_%d.pth' % (config['name'], fold+1)
         if not os.path.exists(model_path):
             print('%s is not exists.' %model_path)
             continue
@@ -191,13 +191,21 @@ def main():
                     if config['wh']:
                         output_hf['wh'] = torch.flip(output_hf['wh'], (-1,))
 
-                    output['hm'] = (output['hm'] + output_hf['hm']) / 2
-                    output['reg'] = (output['reg'] + output_hf['reg']) / 2
-                    output['depth'] = (output['depth'] + output_hf['depth']) / 2
+                    # output['hm'] = (output['hm'] + output_hf['hm']) / 2
+                    # output['reg'] = (output['reg'] + output_hf['reg']) / 2
+                    # output['depth'] = (output['depth'] + output_hf['depth']) / 2
+                    # if config['rot'] == 'trig':
+                    #     output['trig'] = (output['trig'] + output_hf['trig']) / 2
+                    # if config['wh']:
+                    #     output['wh'] = (output['wh'] + output_hf['wh']) / 2
+
+                    output['hm'] = 0.8 * output['hm'] + 0.2 * output_hf['hm']
+                    output['reg'] = 0.8 * output['reg'] + 0.2 * output_hf['reg']
+                    output['depth'] = 0.8 * output['depth'] + 0.2 * output_hf['depth']
                     if config['rot'] == 'trig':
-                        output['trig'] = (output['trig'] + output_hf['trig']) / 2
+                        output['trig'] = 0.8 * output['trig'] + 0.2 * output_hf['trig']
                     if config['wh']:
-                        output['wh'] = (output['wh'] + output_hf['wh']) / 2
+                        output['wh'] = 0.8 * output['wh'] + 0.2 * output_hf['wh']
 
                 dets = decode(
                     config,
@@ -246,7 +254,7 @@ def main():
         name += '_nms%.2f' %args.nms_th
     if args.hflip:
         name += '_hf'
-    pred_df.to_csv('preds/%s.csv' %name, index=False)
+    pred_df.to_csv('outputs/submissions/val/%s.csv' %name, index=False)
     print(pred_df.head())
 
 

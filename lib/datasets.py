@@ -297,3 +297,58 @@ class Dataset(torch.utils.data.Dataset):
             return len(self.img_paths)
         else:
             return len(self.img_paths) + len(self.test_img_paths)
+
+
+class PoseDataset(torch.utils.data.Dataset):
+    def __init__(self, img_paths, labels, transform=None):
+        self.img_paths = img_paths
+        self.labels = labels
+        self.transform = transform
+
+    def __getitem__(self, index):
+        img_path, label = self.img_paths[index], self.labels[index]
+
+        img = cv2.imread(img_path)
+        if img is None:
+            print('%s does not exist' %img_path)
+            img = np.zeros((224, 224, 3), 'uint8')
+
+        if self.transform is not None:
+            img = self.transform(image=img)['image']
+
+        return img, label
+
+    def __len__(self):
+        return len(self.img_paths)
+
+
+class CropPoseDataset(torch.utils.data.Dataset):
+    def __init__(self, img_path, labels, transform=None):
+        self.img_path = img_path
+        self.labels = labels
+        self.transform = transform
+
+        self.img = cv2.imread(self.img_path)
+        if self.img is None:
+            print('%s does not exist' %self.img_path)
+            self.labels = []
+
+    def __getitem__(self, index):
+        label = self.labels[index]
+        pitch, yaw, roll, x, y, z, score, w, h = label
+
+        x, y = convert_3d_to_2d(x, y, z)
+        xmin = int(round(x - w / 2))
+        xmax = int(round(x + w / 2))
+        ymin = int(round(y - h / 2))
+        ymax = int(round(y + h / 2))
+
+        img = self.img[ymin:ymax, xmin:xmax]
+
+        if self.transform is not None:
+            img = self.transform(image=img)['image']
+
+        return img, label
+
+    def __len__(self):
+        return len(self.labels)

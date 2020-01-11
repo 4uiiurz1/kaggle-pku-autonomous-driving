@@ -150,7 +150,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    map = mean_average_precision('preds/%s.csv' %args.name, nrows=None)
+    map = mean_average_precision('outputs/submissions/val/%s.csv' %args.name, nrows=None)
     print('map:', map)
 
 

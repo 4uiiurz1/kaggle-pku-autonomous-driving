@@ -7,6 +7,7 @@ from collections import OrderedDict
 import random
 import warnings
 from datetime import datetime
+import json
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -61,7 +62,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open('models/%s/config.yml' % args.name, 'r') as f:
+    with open('models/detection/%s/config.yml' % args.name, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     print('-'*20)
@@ -116,8 +117,8 @@ def main():
     if args.hflip:
         name += '_hf'
 
-    if os.path.exists('outputs/%s.pth' %name):
-        merged_outputs = torch.load('outputs/%s.pth' %name)
+    if os.path.exists('outputs/raw/test/%s.pth' %name):
+        merged_outputs = torch.load('outputs/raw/test/%s.pth' %name)
 
     else:
         merged_outputs = {}
@@ -148,7 +149,7 @@ def main():
                               freeze_bn=config['freeze_bn'])
             model = model.cuda()
 
-            model_path = 'models/%s/model_%d.pth' % (config['name'], fold+1)
+            model_path = 'models/detection/%s/model_%d.pth' % (config['name'], fold+1)
             if not os.path.exists(model_path):
                 print('%s is not exists.' %model_path)
                 continue
@@ -256,7 +257,7 @@ def main():
                 name = '%s_1_%.2f' %(args.name, args.score_th)
                 if args.nms:
                     name += '_nms%.2f' %args.nms_th
-                df.to_csv('submissions/%s.csv' %name, index=False)
+                df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
                 return
 
         # ensemble duplicate images
@@ -294,9 +295,10 @@ def main():
             for img_id in img_ids:
                 merged_outputs[img_id] = output
 
-        torch.save(merged_outputs, 'outputs/%s.pth' %name)
+        torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %name)
 
     # decode
+    decoded = {}
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
 
@@ -315,6 +317,8 @@ def main():
         )
         det = det.numpy()[0]
 
+        decoded[img_id] = det.tolist()
+
         if args.nms:
             det = nms(det, dist_th=args.nms_th)
 
@@ -331,6 +335,8 @@ def main():
 
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[:, :7])
 
+    with open('outputs/decoded/test/%s.json' %name, 'w') as f:
+        json.dump(decoded, f)
 
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
@@ -339,7 +345,7 @@ def main():
         name += '_hf'
     if args.min_samples > 0:
         name += '_min%d' %args.min_samples
-    df.to_csv('submissions/%s.csv' %name, index=False)
+    df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
 
 
 if __name__ == '__main__':

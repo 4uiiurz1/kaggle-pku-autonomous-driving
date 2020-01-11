@@ -65,10 +65,10 @@ def main():
 
     config['models'] = config['models'].split(',')
 
-    if not os.path.exists('models/%s' % config['name']):
-        os.makedirs('models/%s' % config['name'])
+    if not os.path.exists('models/detection/%s' % config['name']):
+        os.makedirs('models/detection/%s' % config['name'])
 
-    with open('models/%s/config.yml' % config['name'], 'w') as f:
+    with open('models/detection/%s/config.yml' % config['name'], 'w') as f:
         yaml.dump(config, f)
 
     print('-'*20)
@@ -76,7 +76,7 @@ def main():
         print('%s: %s' % (key, str(config[key])))
     print('-'*20)
 
-    with open('models/%s/config.yml' % config['models'][0], 'r') as f:
+    with open('models/detection/%s/config.yml' % config['models'][0], 'r') as f:
         model_config = yaml.load(f, Loader=yaml.FullLoader)
 
     df = pd.read_csv('inputs/sample_submission.csv')
@@ -94,15 +94,17 @@ def main():
             'hm': 0,
             'reg': 0,
             'depth': 0,
-            'trig': 0,
-            'wh': 0,
+            'eular': 0 if model_config['rot'] == 'eular' else None,
+            'trig': 0 if model_config['rot'] == 'trig' else None,
+            'quat': 0 if model_config['rot'] == 'quat' else None,
+            'wh': 0 if model_config['wh'] else None,
             'mask': 0,
         }
 
         merged_outputs[img_id] = output
 
     for model_name in config['models']:
-        outputs = torch.load('outputs/%s.pth' %model_name)
+        outputs = torch.load('outputs/raw/test/%s.pth' %model_name)
 
         for i in tqdm(range(len(df))):
             img_id = df.loc[i, 'ImageId']
@@ -116,7 +118,7 @@ def main():
             merged_outputs[img_id]['wh'] += output['wh'] / len(config['models'])
             merged_outputs[img_id]['mask'] += output['mask'] / len(config['models'])
 
-    torch.save(merged_outputs, 'outputs/%s.pth' %config['name'])
+    torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %config['name'])
 
     # decode
     for i in tqdm(range(len(df))):
@@ -148,7 +150,7 @@ def main():
 
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > config['score_th'], :7])
 
-    df.to_csv('submissions/%s.csv' %config['name'], index=False)
+    df.to_csv('outputs/submissions/test/%s.csv' %config['name'], index=False)
 
 
 if __name__ == '__main__':

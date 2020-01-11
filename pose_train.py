@@ -38,11 +38,10 @@ from albumentations.core.composition import Compose, OneOf, KeypointParams
 from albumentations.pytorch.transforms import ToTensor
 from albumentations.core.transforms_interface import NoOp
 
-from lib.datasets import Dataset
+from lib.datasets import PoseDataset
 from lib.utils.utils import *
-from lib.models.model_factory import get_model
+from lib.models.model_factory import get_pose_model
 from lib.optimizers import RAdam
-from lib import losses
 from lib.decodes import decode
 
 
@@ -53,37 +52,19 @@ def parse_args():
                         help='model name: (default: arch+timestamp)')
     parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('-b', '--batch_size', default=4, type=int,
-                        metavar='N', help='mini-batch size (default: 4)')
+    parser.add_argument('-b', '--batch_size', default=32, type=int,
+                        metavar='N', help='mini-batch size (default: 32)')
 
     # model
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18_fpn',
-                        help='model architecture: (default: resnet18_fpn)')
-    parser.add_argument('--head_conv', default=64, type=int)
-    parser.add_argument('--num_filters', default='256,128,64')
-    parser.add_argument('--dcn', default=False, type=str2bool)
-    parser.add_argument('--input_w', default=2560, type=int)
-    parser.add_argument('--input_h', default=2048, type=int)
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
+                        help='model architecture: (default: resnet18)')
+    parser.add_argument('--input_w', default=224, type=int)
+    parser.add_argument('--input_h', default=224, type=int)
     parser.add_argument('--freeze_bn', default=False, type=str2bool)
     parser.add_argument('--rot', default='trig', choices=['eular', 'trig', 'quat'])
-    parser.add_argument('--wh', default=True, type=str2bool)
-    parser.add_argument('--gn', default=False, type=str2bool)
-    parser.add_argument('--ws', default=False, type=str2bool)
-    parser.add_argument('--lhalf', default=True, type=str2bool)
-
-    # pseudo labeling
-    parser.add_argument('--load_model', default=None)
-    parser.add_argument('--pseudo_label', default=None)
 
     # loss
-    parser.add_argument('--hm_loss', default='FocalLoss')
-    parser.add_argument('--reg_loss', default='L1Loss')
-    parser.add_argument('--wh_loss', default='L1Loss')
-    parser.add_argument('--wh_weight', default=0.05, type=float)
-    parser.add_argument('--depth_loss', default='L1Loss')
-    parser.add_argument('--eular_loss', default='L1Loss')
-    parser.add_argument('--trig_loss', default='L1Loss')
-    parser.add_argument('--quat_loss', default='L1Loss')
+    parser.add_argument('--loss', default='L1Loss')
 
     # optimizer
     parser.add_argument('--optimizer', default='RAdam')
@@ -107,11 +88,11 @@ def parse_args():
     parser.add_argument('--gamma', default=2/3, type=float)
 
     # dataset
-    parser.add_argument('--cv', default=True, type=str2bool)
+    parser.add_argument('--cv', default=False, type=str2bool)
     parser.add_argument('--n_splits', default=5, type=int)
 
     # augmentation
-    parser.add_argument('--hflip', default=True, type=str2bool)
+    parser.add_argument('--hflip', default=False, type=str2bool)
     parser.add_argument('--hflip_p', default=0.5, type=float)
     parser.add_argument('--shift', default=True, type=str2bool)
     parser.add_argument('--shift_p', default=0.5, type=float)
@@ -144,31 +125,19 @@ def parse_args():
     return args
 
 
-def train(config, heads, train_loader, model, criterion, optimizer, epoch):
-    avg_meters = {'loss': AverageMeter()}
-    for head in heads.keys():
-        avg_meters[head] = AverageMeter()
+def train(config, train_loader, model, criterion, optimizer, epoch):
+    avg_meter = AverageMeter()
 
     model.train()
 
     pbar = tqdm(total=len(train_loader))
-    for i, batch in enumerate(train_loader):
-        input = batch['input'].cuda()
-        mask = batch['mask'].cuda()
-        reg_mask = batch['reg_mask'].cuda()
+    for i, (input, target) in enumerate(train_loader):
+        input = input.cuda()
+        target = target.cuda()
 
         output = model(input)
 
-        loss = 0
-        losses = {}
-        for head in heads.keys():
-            losses[head] = criterion[head](output[head], batch[head].cuda(),
-                                           mask if head == 'hm' else reg_mask)
-            if head == 'wh':
-                loss += config['wh_weight'] * losses[head]
-            else:
-                loss += losses[head]
-        losses['loss'] = loss
+        loss = criterion(output, target.float())
 
         # compute gradient and do optimizing step
         optimizer.zero_grad()
@@ -179,51 +148,36 @@ def train(config, heads, train_loader, model, criterion, optimizer, epoch):
             loss.backward()
         optimizer.step()
 
-        avg_meters['loss'].update(losses['loss'].item(), input.size(0))
-        postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
-        for head in heads.keys():
-            avg_meters[head].update(losses[head].item(), input.size(0))
-            postfix[head + '_loss'] = avg_meters[head].avg
+        avg_meter.update(loss.item(), input.size(0))
+        postfix = OrderedDict([('loss', avg_meter.avg)])
         pbar.set_postfix(postfix)
         pbar.update(1)
     pbar.close()
 
-    return avg_meters['loss'].avg
+    return avg_meter.avg
 
 
-def validate(config, heads, val_loader, model, criterion):
+def validate(config, val_loader, model, criterion):
     avg_meters = {'loss': AverageMeter()}
-    for head in heads.keys():
-        avg_meters[head] = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
 
     with torch.no_grad():
         pbar = tqdm(total=len(val_loader))
-        for i, batch in enumerate(val_loader):
-            input = batch['input'].cuda()
-            mask = batch['mask'].cuda()
-            reg_mask = batch['reg_mask'].cuda()
+        for i, (input, target) in enumerate(val_loader):
+            input = input.cuda()
+            target = target.cuda()
 
             output = model(input)
 
             loss = 0
             losses = {}
-            for head in heads.keys():
-                losses[head] = criterion[head](output[head], batch[head].cuda(),
-                                               mask if head == 'hm' else reg_mask)
-                if head == 'wh':
-                    loss += config['wh_weight'] * losses[head]
-                else:
-                    loss += losses[head]
+            loss = criterion(output, target.float())
             losses['loss'] = loss
 
             avg_meters['loss'].update(losses['loss'].item(), input.size(0))
             postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
-            for head in heads.keys():
-                avg_meters[head].update(losses[head].item(), input.size(0))
-                postfix[head + '_loss'] = avg_meters[head].avg
             pbar.set_postfix(postfix)
             pbar.update(1)
 
@@ -238,17 +192,15 @@ def main():
     if config['name'] is None:
         config['name'] = '%s_%s' % (config['arch'], datetime.now().strftime('%m%d%H'))
 
-    config['num_filters'] = [int(n) for n in config['num_filters'].split(',')]
-
-    if not os.path.exists('models/detection/%s' % config['name']):
-        os.makedirs('models/detection/%s' % config['name'])
+    if not os.path.exists('pose_models/%s' % config['name']):
+        os.makedirs('pose_models/%s' % config['name'])
 
     if config['resume']:
-        with open('models/detection/%s/config.yml' % config['name'], 'r') as f:
+        with open('pose_models/%s/config.yml' % config['name'], 'r') as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         config['resume'] = True
 
-    with open('models/detection/%s/config.yml' % config['name'], 'w') as f:
+    with open('pose_models/%s/config.yml' % config['name'], 'w') as f:
         yaml.dump(config, f)
 
     print('-'*20)
@@ -259,56 +211,28 @@ def main():
     cudnn.benchmark = True
 
     df = pd.read_csv('inputs/train.csv')
-    img_paths = np.array('inputs/train_images/' + df['ImageId'].values + '.jpg')
-    mask_paths = np.array('inputs/train_masks/' + df['ImageId'].values + '.jpg')
-    labels = np.array([convert_str_to_labels(s) for s in df['PredictionString']])
-
-    test_img_paths = None
-    test_mask_paths = None
-    test_outputs = None
-    if config['pseudo_label'] is not None:
-        test_df = pd.read_csv('inputs/sample_submission.csv')
-        test_img_paths = np.array('inputs/test_images/' + test_df['ImageId'].values + '.jpg')
-        test_mask_paths = np.array('inputs/test_masks/' + test_df['ImageId'].values + '.jpg')
-        ext = os.path.splitext(config['pseudo_label'])[1]
-        if ext == '.pth':
-            test_outputs = torch.load('outputs/raw/test/%s' %config['pseudo_label'])
-        elif ext == '.csv':
-            test_labels = pd.read_csv('outputs/submissions/test/%s' %config['pseudo_label'])
-            null_idx = test_labels.isnull().any(axis=1)
-            test_img_paths = test_img_paths[~null_idx]
-            test_mask_paths = test_mask_paths[~null_idx]
-            test_labels = test_labels.dropna()
-            test_labels = np.array([convert_str_to_labels(s,
-                names=['pitch', 'yaw', 'roll', 'x', 'y', 'z', 'score']) for s in test_labels['PredictionString']])
-            print(test_labels)
-        else:
-            raise NotImplementedError
+    img_ids = df['ImageId'].values
+    pose_df = pd.read_csv('processed/pose_train.csv')
+    pose_df['img_path'] = 'processed/pose_images/' + pose_df['img_path']
 
     if config['resume']:
-        checkpoint = torch.load('models/detection/%s/checkpoint.pth.tar' % config['name'])
-
-    heads = OrderedDict([
-        ('hm', 1),
-        ('reg', 2),
-        ('depth', 1),
-    ])
+        checkpoint = torch.load('models/%s/checkpoint.pth.tar' % config['name'])
 
     if config['rot'] == 'eular':
-        heads['eular'] = 3
+        num_outputs = 3
     elif config['rot'] == 'trig':
-        heads['trig'] = 6
+        num_outputs = 6
     elif config['rot'] == 'quat':
-        heads['quat'] = 4
+        num_outputs = 4
     else:
         raise NotImplementedError
 
-    if config['wh']:
-        heads['wh'] = 2
-
-    criterion = OrderedDict()
-    for head in heads.keys():
-        criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
+    if config['loss'] == 'L1Loss':
+        criterion = nn.L1Loss().cuda()
+    elif config['loss'] == 'MSELoss':
+        criterion = nn.MSELoss().cuda()
+    else:
+        raise NotImplementedError
 
     train_transform = Compose([
         transforms.ShiftScaleRotate(
@@ -341,20 +265,26 @@ def main():
         transforms.CLAHE(
             p=config['clahe_p'],
         ) if config['clahe'] else NoOp(),
-    ], keypoint_params=KeypointParams(format='xy', remove_invisible=False))
+        transforms.Resize(config['input_w'], config['input_h']),
+        transforms.Normalize(),
+        ToTensor(),
+    ])
 
-    val_transform = None
+    val_transform = Compose([
+        transforms.Resize(config['input_w'], config['input_h']),
+        transforms.Normalize(),
+        ToTensor(),
+    ])
 
     folds = []
     best_losses = []
-    # best_scores = []
 
     kf = KFold(n_splits=config['n_splits'], shuffle=True, random_state=41)
-    for fold, (train_idx, val_idx) in enumerate(kf.split(img_paths)):
+    for fold, (train_idx, val_idx) in enumerate(kf.split(img_ids)):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
-        if (config['resume'] and fold < checkpoint['fold'] - 1) or (not config['resume'] and os.path.exists('models/%s/model_%d.pth' % (config['name'], fold+1))):
-            log = pd.read_csv('models/detection/%s/log_%d.csv' %(config['name'], fold+1))
+        if (config['resume'] and fold < checkpoint['fold'] - 1) or (not config['resume'] and os.path.exists('pose_models/%s/model_%d.pth' % (config['name'], fold+1))):
+            log = pd.read_csv('pose_models/%s/log_%d.csv' %(config['name'], fold+1))
             best_loss = log.loc[log['val_loss'].values.argmin(), 'val_loss']
             # best_loss, best_score = log.loc[log['val_loss'].values.argmin(), ['val_loss', 'val_score']].values
             folds.append(str(fold + 1))
@@ -362,30 +292,79 @@ def main():
             # best_scores.append(best_score)
             continue
 
-        train_img_paths, val_img_paths = img_paths[train_idx], img_paths[val_idx]
-        train_mask_paths, val_mask_paths = mask_paths[train_idx], mask_paths[val_idx]
-        train_labels, val_labels = labels[train_idx], labels[val_idx]
+        train_img_ids, val_img_ids = img_ids[train_idx], img_ids[val_idx]
 
-        if config['pseudo_label'] is not None:
-            train_img_paths = np.hstack((train_img_paths, test_img_paths))
-            train_mask_paths = np.hstack((train_mask_paths, test_mask_paths))
-            train_labels = np.hstack((train_labels, test_labels))
+        train_img_paths = []
+        train_labels = []
+        for img_id in train_img_ids:
+            tmp = pose_df.loc[pose_df.ImageId == img_id]
+
+            img_path = tmp['img_path'].values
+            train_img_paths.append(img_path)
+
+            yaw = tmp['yaw'].values
+            pitch = tmp['pitch'].values
+            roll = tmp['roll'].values
+            roll = rotate(roll, np.pi)
+
+            if config['rot'] == 'eular':
+                raise NotImplementedError
+            elif config['rot'] == 'trig':
+                label = np.array([
+                    np.cos(yaw),
+                    np.sin(yaw),
+                    np.cos(pitch),
+                    np.sin(pitch),
+                    np.cos(roll),
+                    np.sin(roll),
+                ]).T
+            elif config['rot'] == 'quat':
+                raise NotImplementedError
+            else:
+                raise NotImplementedError
+
+            train_labels.append(label)
+        train_img_paths = np.hstack(train_img_paths)
+        train_labels = np.vstack(train_labels)
+
+        val_img_paths = []
+        val_labels = []
+        for img_id in val_img_ids:
+            tmp = pose_df.loc[pose_df.ImageId == img_id]
+
+            img_path = tmp['img_path'].values
+            val_img_paths.append(img_path)
+
+            yaw = tmp['yaw'].values
+            pitch = tmp['pitch'].values
+            roll = tmp['roll'].values
+            roll = rotate(roll, np.pi)
+
+            if config['rot'] == 'eular':
+                raise NotImplementedError
+            elif config['rot'] == 'trig':
+                label = np.array([
+                    np.cos(yaw),
+                    np.sin(yaw),
+                    np.cos(pitch),
+                    np.sin(pitch),
+                    np.cos(roll),
+                    np.sin(roll),
+                ]).T
+            elif config['rot'] == 'quat':
+                raise NotImplementedError
+            else:
+                raise NotImplementedError
+
+            val_labels.append(label)
+        val_img_paths = np.hstack(val_img_paths)
+        val_labels = np.vstack(val_labels)
 
         # train
-        train_set = Dataset(
+        train_set = PoseDataset(
             train_img_paths,
-            train_mask_paths,
             train_labels,
-            input_w=config['input_w'],
-            input_h=config['input_h'],
             transform=train_transform,
-            lhalf=config['lhalf'],
-            hflip=config['hflip_p'] if config['hflip'] else 0,
-            scale=config['scale_p'] if config['scale'] else 0,
-            scale_limit=config['scale_limit'],
-            # test_img_paths=test_img_paths,
-            # test_mask_paths=test_mask_paths,
-            # test_outputs=test_outputs,
         )
         train_loader = torch.utils.data.DataLoader(
             train_set,
@@ -395,14 +374,11 @@ def main():
             # pin_memory=True,
         )
 
-        val_set = Dataset(
+        val_set = PoseDataset(
             val_img_paths,
-            val_mask_paths,
             val_labels,
-            input_w=config['input_w'],
-            input_h=config['input_h'],
             transform=val_transform,
-            lhalf=config['lhalf'])
+        )
         val_loader = torch.utils.data.DataLoader(
             val_set,
             batch_size=config['batch_size'],
@@ -412,16 +388,10 @@ def main():
         )
 
         # create model
-        model = get_model(config['arch'], heads=heads,
-                          head_conv=config['head_conv'],
-                          num_filters=config['num_filters'],
-                          dcn=config['dcn'],
-                          gn=config['gn'], ws=config['ws'],
+        model = get_pose_model(config['arch'],
+                          num_outputs=num_outputs,
                           freeze_bn=config['freeze_bn'])
         model = model.cuda()
-
-        if config['load_model'] is not None:
-            model.load_state_dict(torch.load('models/detection/%s/model_%d.pth' %(config['load_model'], fold+1)))
 
         params = filter(lambda p: p.requires_grad, model.parameters())
         if config['optimizer'] == 'Adam':
@@ -467,16 +437,16 @@ def main():
             optimizer.load_state_dict(checkpoint['optimizer'])
             scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
-            log = pd.read_csv('models/detection/%s/log_%d.csv' % (config['name'], fold+1)).to_dict(orient='list')
+            log = pd.read_csv('pose_models/%s/log_%d.csv' % (config['name'], fold+1)).to_dict(orient='list')
             best_loss = checkpoint['best_loss']
 
         for epoch in range(start_epoch, config['epochs']):
             print('Epoch [%d/%d]' % (epoch + 1, config['epochs']))
 
             # train for one epoch
-            train_loss = train(config, heads, train_loader, model, criterion, optimizer, epoch)
+            train_loss = train(config, train_loader, model, criterion, optimizer, epoch)
             # evaluate on validation set
-            val_loss = validate(config, heads, val_loader, model, criterion)
+            val_loss = validate(config, val_loader, model, criterion)
 
             if config['scheduler'] == 'CosineAnnealingLR':
                 scheduler.step()
@@ -493,10 +463,10 @@ def main():
             log['val_loss'].append(val_loss)
             # log['val_score'].append(val_score)
 
-            pd.DataFrame(log).to_csv('models/detection/%s/log_%d.csv' % (config['name'], fold+1), index=False)
+            pd.DataFrame(log).to_csv('pose_models/%s/log_%d.csv' % (config['name'], fold+1), index=False)
 
             if val_loss < best_loss:
-                torch.save(model.state_dict(), 'models/detection/%s/model_%d.pth' % (config['name'], fold+1))
+                torch.save(model.state_dict(), 'pose_models/%s/model_%d.pth' % (config['name'], fold+1))
                 best_loss = val_loss
                 # best_score = val_score
                 print("=> saved best model")
@@ -509,7 +479,7 @@ def main():
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict(),
             }
-            torch.save(state, 'models/detection/%s/checkpoint.pth.tar' % config['name'])
+            torch.save(state, 'pose_models/%s/checkpoint.pth.tar' % config['name'])
 
         print('val_loss:  %f' % best_loss)
         # print('val_score: %f' % best_score)
@@ -525,7 +495,7 @@ def main():
         })
 
         print(results)
-        results.to_csv('models/detection/%s/results.csv' % config['name'], index=False)
+        results.to_csv('pose_models/%s/results.csv' % config['name'], index=False)
 
         del model
         torch.cuda.empty_cache()
