@@ -38,7 +38,7 @@ from albumentations.core.composition import Compose, OneOf, KeypointParams
 from albumentations.pytorch.transforms import ToTensor
 from albumentations.core.transforms_interface import NoOp
 
-from lib.datasets import CropPoseDataset
+from lib.datasets import PoseDataset
 from lib.utils.utils import *
 from lib.models.model_factory import get_pose_model
 from lib.optimizers import RAdam
@@ -84,7 +84,7 @@ def main():
     labels = np.array([convert_str_to_labels(s, names=['yaw', 'pitch', 'roll',
                        'x', 'y', 'z', 'score']) for s in df['PredictionString']])
     with open('outputs/decoded/test/%s.json' %args.det_name, 'r') as f:
-        decoded = json.load(f)
+        dets = json.load(f)
 
     if config['rot'] == 'eular':
         num_outputs = 3
@@ -101,7 +101,72 @@ def main():
         ToTensor(),
     ])
 
-    dets = {img_id: [] for img_id in img_ids}
+    det_df = {
+        'ImageId': [],
+        'img_path': [],
+        'det': [],
+        'mask': [],
+    }
+
+    name = '%s_%.2f' %(args.det_name, args.score_th)
+    if args.nms:
+        name += '_nms%.2f' %args.nms_th
+    if args.min_samples > 0:
+        name += '_min%d' %args.min_samples
+
+    output_dir = 'processed/pose_images/test/%s' % name
+    os.makedirs(output_dir, exist_ok=True)
+    for img_id, img_path in tqdm(zip(img_ids, img_paths), total=len(img_ids)):
+        img = cv2.imread(img_path)
+        height, width = img.shape[:2]
+
+        det = np.array(dets[img_id])
+        if np.sum(det[:, 6] > args.score_th) >= args.min_samples:
+            det = det[det[:, 6] > args.score_th]
+        else:
+            det = det[:args.min_samples]
+        if args.nms:
+            det = nms(det, dist_th=args.nms_th)
+
+        for k in range(len(det)):
+            pitch, yaw, roll, x, y, z, score, w, h = det[k]
+
+            det_df['ImageId'].append(img_id)
+            det_df['det'].append(det[k])
+            output_path = '%s_%d.jpg' %(img_id, k)
+            det_df['img_path'].append(output_path)
+
+            x, y = convert_3d_to_2d(x, y, z)
+            w *= 1.1
+            h *= 1.1
+            xmin = int(round(x - w / 2))
+            xmax = int(round(x + w / 2))
+            ymin = int(round(y - h / 2))
+            ymax = int(round(y + h / 2))
+
+            cropped_img = img[ymin:ymax, xmin:xmax]
+            if cropped_img.shape[0] > 0 and cropped_img.shape[1] > 0:
+                cv2.imwrite(os.path.join(output_dir, output_path), cropped_img)
+                det_df['mask'].append(1)
+            else:
+                det_df['mask'].append(0)
+
+    det_df = pd.DataFrame(det_df)
+
+    test_set = PoseDataset(
+        output_dir + '/' + det_df['img_path'].values,
+        det_df['det'].values,
+        transform=test_transform,
+        masks=det_df['mask'].values)
+    test_loader = torch.utils.data.DataLoader(
+        test_set,
+        batch_size=config['batch_size'],
+        shuffle=False,
+        num_workers=config['num_workers'],
+        # pin_memory=True,
+    )
+
+    dets = []
     for fold in range(config['n_splits']):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
@@ -119,94 +184,45 @@ def main():
 
         model.eval()
 
-        for img_id, img_path in tqdm(zip(img_ids, img_paths), total=len(img_ids)):
-            det = decoded[img_id]
-            det = np.array(det)
-            det = det[det[:, 6] > args.score_th]
-            if args.nms:
-                det = nms(det, dist_th=args.nms_th)
+        fold_dets = []
+        with torch.no_grad():
+            for input, batch_det, mask in tqdm(test_loader, total=len(test_loader)):
+                input = input.cuda()
+                batch_det = batch_det.numpy()
+                mask = mask.numpy()
 
-            if len(det) == 0:
-                continue
+                output = model(input)
+                output = output.cpu()
 
-            test_set = CropPoseDataset(
-                img_path,
-                det,
-                transform=test_transform)
-            test_loader = torch.utils.data.DataLoader(
-                test_set,
-                batch_size=config['batch_size'],
-                shuffle=False,
-                num_workers=config['num_workers'],
-                # pin_memory=True,
-            )
+                if config['rot'] == 'trig':
+                    yaw = torch.atan2(output[..., 1:2], output[..., 0:1])
+                    pitch = torch.atan2(output[..., 3:4], output[..., 2:3])
+                    roll = torch.atan2(output[..., 5:6], output[..., 4:5])
+                    roll = rotate(roll, -np.pi)
 
-            det = []
-            with torch.no_grad():
-                for i, (input, batch_det) in enumerate(test_loader):
-                    input = input.cuda()
-                    batch_det = batch_det.numpy()
+                pitch = pitch.cpu().numpy()[:, 0]
+                yaw = yaw.cpu().numpy()[:, 0]
+                roll = roll.cpu().numpy()[:, 0]
 
-                    output = model(input)
-                    output = output.cpu()
+                batch_det[mask, 0] = pitch[mask]
+                batch_det[mask, 1] = yaw[mask]
+                batch_det[mask, 2] = roll[mask]
 
-                    if config['rot'] == 'trig':
-                        yaw = torch.atan2(output[..., 1:2], output[..., 0:1])
-                        pitch = torch.atan2(output[..., 3:4], output[..., 2:3])
-                        roll = torch.atan2(output[..., 5:6], output[..., 4:5])
-                        roll = rotate(roll, -np.pi)
+                fold_dets.append(batch_det)
+        fold_dets = np.vstack(fold_dets)
+        dets.append(fold_dets)
+    dets = np.array(dets)
+    dets = np.mean(dets, axis=0)
+    det_df['det'] = dets.tolist()
+    det_df = det_df.groupby('ImageId')['det'].apply(list)
+    df = pd.DataFrame({
+        'ImageId': det_df.index.values,
+        'PredictionString': det_df.values,
+    })
 
-                    batch_det[:, 0] = pitch.cpu().numpy()[:, 0]
-                    batch_det[:, 1] = yaw.cpu().numpy()[:, 0]
-                    batch_det[:, 2] = roll.cpu().numpy()[:, 0]
-
-                    det.append(batch_det)
-            det = np.concatenate(det, axis=0)
-            dets[img_id].append(det)
-
-            if args.show:
-                img = cv2.imread(img_path)
-                img_pred = visualize(img, det)
-                plt.imshow(img_pred[..., ::-1])
-                plt.show()
-
-        if not config['cv']:
-            df['PredictionString'] = preds_fold
-            name = '%s_1_%.2f' %(args.name, args.score_th)
-            if args.nms:
-                name += '_nms%.2f' %args.nms_th
-            df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
-            return
-
-    # decode
-    decoded = {}
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
-
-        output = merged_outputs[img_id]
-
-        det = decode(
-            config,
-            output['hm'],
-            output['reg'],
-            output['depth'],
-            eular=output['eular'] if config['rot'] == 'eular' else None,
-            trig=output['trig'] if config['rot'] == 'trig' else None,
-            quat=output['quat'] if config['rot'] == 'quat' else None,
-            wh=output['wh'] if config['wh'] else None,
-            mask=output['mask'],
-        )
-        det = det.numpy()[0]
-
-        decoded[img_id] = det.tolist()
-
-        if args.nms:
-            det = nms(det, dist_th=args.nms_th)
-
-        if np.sum(det[:, 6] > args.score_th) >= args.min_samples:
-            det = det[det[:, 6] > args.score_th]
-        else:
-            det = det[:args.min_samples]
+        det = np.array(df.loc[i, 'PredictionString'])
 
         if args.show:
             img = cv2.imread('inputs/test_images/%s.jpg' %img_id)
@@ -216,16 +232,8 @@ def main():
 
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[:, :7])
 
-    with open('outputs/decoded/test/%s.json' %name, 'w') as f:
-        json.dump(decoded, f)
+    name += '_%s' %args.pose_name
 
-    name = '%s_%.2f' %(args.name, args.score_th)
-    if args.nms:
-        name += '_nms%.2f' %args.nms_th
-    if args.hflip:
-        name += '_hf'
-    if args.min_samples > 0:
-        name += '_min%d' %args.min_samples
     df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
 
 

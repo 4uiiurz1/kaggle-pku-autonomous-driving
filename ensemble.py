@@ -7,6 +7,7 @@ from collections import OrderedDict
 import random
 import warnings
 from datetime import datetime
+import json
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -63,7 +64,11 @@ def main():
     if config['name'] is None:
         config['name'] = 'ensemble_%s' % datetime.now().strftime('%m%d%H')
 
-    config['models'] = config['models'].split(',')
+    if os.path.exists('models/detection/%s/config.yml' % config['name']):
+        with open('models/detection/%s/config.yml' % config['name'], 'r') as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        config['models'] = config['models'].split(',')
 
     if not os.path.exists('models/detection/%s' % config['name']):
         os.makedirs('models/detection/%s' % config['name'])
@@ -85,42 +90,46 @@ def main():
     labels = np.array([convert_str_to_labels(s, names=['yaw', 'pitch', 'roll',
                        'x', 'y', 'z', 'score']) for s in df['PredictionString']])
 
-    # merge
-    merged_outputs = {}
-    for i in tqdm(range(len(df))):
-        img_id = df.loc[i, 'ImageId']
+    if os.path.exists('outputs/raw/test/%s.pth' %config['name']):
+        merged_outputs = torch.load('outputs/raw/test/%s.pth' %config['name'])
 
-        output = {
-            'hm': 0,
-            'reg': 0,
-            'depth': 0,
-            'eular': 0 if model_config['rot'] == 'eular' else None,
-            'trig': 0 if model_config['rot'] == 'trig' else None,
-            'quat': 0 if model_config['rot'] == 'quat' else None,
-            'wh': 0 if model_config['wh'] else None,
-            'mask': 0,
-        }
-
-        merged_outputs[img_id] = output
-
-    for model_name in config['models']:
-        outputs = torch.load('outputs/raw/test/%s.pth' %model_name)
-
+    else:
+        merged_outputs = {}
         for i in tqdm(range(len(df))):
             img_id = df.loc[i, 'ImageId']
 
-            output = outputs[img_id]
+            output = {
+                'hm': 0,
+                'reg': 0,
+                'depth': 0,
+                'eular': 0 if model_config['rot'] == 'eular' else None,
+                'trig': 0 if model_config['rot'] == 'trig' else None,
+                'quat': 0 if model_config['rot'] == 'quat' else None,
+                'wh': 0 if model_config['wh'] else None,
+                'mask': 0,
+            }
 
-            merged_outputs[img_id]['hm'] += output['hm'] / len(config['models'])
-            merged_outputs[img_id]['reg'] += output['reg'] / len(config['models'])
-            merged_outputs[img_id]['depth'] += output['depth'] / len(config['models'])
-            merged_outputs[img_id]['trig'] += output['trig'] / len(config['models'])
-            merged_outputs[img_id]['wh'] += output['wh'] / len(config['models'])
-            merged_outputs[img_id]['mask'] += output['mask'] / len(config['models'])
+            merged_outputs[img_id] = output
 
-    torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %config['name'])
+        for model_name in config['models']:
+            outputs = torch.load('outputs/raw/test/%s.pth' %model_name)
+
+            for i in tqdm(range(len(df))):
+                img_id = df.loc[i, 'ImageId']
+
+                output = outputs[img_id]
+
+                merged_outputs[img_id]['hm'] += output['hm'] / len(config['models'])
+                merged_outputs[img_id]['reg'] += output['reg'] / len(config['models'])
+                merged_outputs[img_id]['depth'] += output['depth'] / len(config['models'])
+                merged_outputs[img_id]['trig'] += output['trig'] / len(config['models'])
+                merged_outputs[img_id]['wh'] += output['wh'] / len(config['models'])
+                merged_outputs[img_id]['mask'] += output['mask'] / len(config['models'])
+
+        torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %config['name'])
 
     # decode
+    dets = {}
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
 
@@ -139,6 +148,8 @@ def main():
         )
         det = det.numpy()[0]
 
+        dets[img_id] = det.tolist()
+
         if config['nms']:
             det = nms(det, dist_th=config['nms_th'])
 
@@ -149,6 +160,9 @@ def main():
             plt.show()
 
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > config['score_th'], :7])
+
+    with open('outputs/decoded/test/%s.json' %config['name'], 'w') as f:
+        json.dump(dets, f)
 
     df.to_csv('outputs/submissions/test/%s.csv' %config['name'], index=False)
 

@@ -225,7 +225,7 @@ def main():
                             merged_outputs[img_id]['wh'] += outputs_fold[img_id]['wh'] / config['n_splits']
                         merged_outputs[img_id]['mask'] = outputs_fold[img_id]['mask']
 
-                    dets = decode(
+                    batch_det = decode(
                         config,
                         output['hm'],
                         output['reg'],
@@ -236,9 +236,9 @@ def main():
                         wh=output['wh'] if config['wh'] else None,
                         mask=mask,
                     )
-                    dets = dets.detach().cpu().numpy()
+                    batch_det = batch_det.cpu().numpy()
 
-                    for k, det in enumerate(dets):
+                    for k, det in enumerate(batch_det):
                         if args.nms:
                             det = nms(det, dist_th=args.nms_th)
                         preds_fold.append(convert_labels_to_str(det[det[:, 6] > args.score_th, :7]))
@@ -298,7 +298,7 @@ def main():
         torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %name)
 
     # decode
-    decoded = {}
+    dets = {}
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
 
@@ -317,7 +317,7 @@ def main():
         )
         det = det.numpy()[0]
 
-        decoded[img_id] = det.tolist()
+        dets[img_id] = det.tolist()
 
         if args.nms:
             det = nms(det, dist_th=args.nms_th)
@@ -336,7 +336,7 @@ def main():
         df.loc[i, 'PredictionString'] = convert_labels_to_str(det[:, :7])
 
     with open('outputs/decoded/test/%s.json' %name, 'w') as f:
-        json.dump(decoded, f)
+        json.dump(dets, f)
 
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:
