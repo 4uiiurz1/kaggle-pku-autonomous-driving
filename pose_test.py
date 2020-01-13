@@ -137,8 +137,8 @@ def main():
             det_df['img_path'].append(output_path)
 
             x, y = convert_3d_to_2d(x, y, z)
-            w *= 1.2
-            h *= 1.2
+            w *= 1.1
+            h *= 1.1
             xmin = int(round(x - w / 2))
             xmax = int(round(x + w / 2))
             ymin = int(round(y - h / 2))
@@ -215,14 +215,15 @@ def main():
     dets = np.mean(dets, axis=0)
     det_df['det'] = dets.tolist()
     det_df = det_df.groupby('ImageId')['det'].apply(list)
-    df = pd.DataFrame({
+    det_df = pd.DataFrame({
         'ImageId': det_df.index.values,
         'PredictionString': det_df.values,
     })
 
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
-        det = np.array(df.loc[i, 'PredictionString'])
+        det = np.array(np.array(det_df.loc[det_df.ImageId == img_id, 'PredictionString'])[0])
+        print(det)
 
         if args.show:
             img = cv2.imread('inputs/test_images/%s.jpg' %img_id)

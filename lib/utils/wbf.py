@@ -25,7 +25,6 @@ def bb_intersection_over_union(A, B):
 def calc_iou(det1, det2):
     bbox1 = get_bbox(*det1[:6], 1, 1, 1, 1)
     bbox2 = get_bbox(*det2[:6], 1, 1, 1, 1)
-    print(bbox1, bbox2)
 
     return bb_intersection_over_union(bbox1, bbox2)
 
@@ -55,6 +54,8 @@ def find_matching_det(dets, new_det, iou_th):
         if iou > best_iou:
             best_index = i
             best_iou = iou
+    if best_index != -1:
+        print(abs(new_det[5] - dets[best_index][5]))
 
     return best_index, best_iou
 
@@ -72,6 +73,7 @@ def wbf(dets_list, weights=[0.3, 0.7], iou_th=0.55, skip_det_thr=0.0, conf_type=
         exit()
 
     dets = []
+    print(len(dets_list))
     for i, weight in enumerate(weights):
         dets.append(dets_list[i].copy())
         dets[i] = dets[i][dets[i][:, 6] > skip_det_thr]
@@ -87,6 +89,7 @@ def wbf(dets_list, weights=[0.3, 0.7], iou_th=0.55, skip_det_thr=0.0, conf_type=
     # Clusterize dets
     for i in range(len(dets)):
         index, best_iou = find_matching_det(weighted_dets, dets[i], iou_th)
+        print(index)
         if index != -1:
             new_dets[index].append(dets[i])
             weighted_dets[index] = get_weighted_det(new_dets[index], conf_type)

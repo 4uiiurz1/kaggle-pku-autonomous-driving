@@ -12,6 +12,7 @@ outputs/submissions/test/*
 notebooks/*
 pretrained_weights/*
 *.bat
+tmp*/*
 
 ensemble_test.py
 ensemble_val.py
