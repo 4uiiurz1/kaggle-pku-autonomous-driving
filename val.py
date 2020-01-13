@@ -7,6 +7,7 @@ from collections import OrderedDict
 import random
 import warnings
 from datetime import datetime
+import json
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -39,7 +40,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.postprocess.nms import nms
+from lib.utils.nms import nms
 
 
 def parse_args():
@@ -93,17 +94,10 @@ def main():
     if config['wh']:
         heads['wh'] = 2
 
-    # criterion = OrderedDict()
-    # for head in heads.keys():
-    #     criterion[head] = losses.__dict__[config[head + '_loss']]().cuda()
-
     pred_df = df.copy()
     pred_df['PredictionString'] = np.nan
-    #
-    # avg_meters = {'loss': AverageMeter()}
-    # for head in heads.keys():
-    #     avg_meters[head] = AverageMeter()
 
+    dets = {}
     kf = KFold(n_splits=config['n_splits'], shuffle=True, random_state=41)
     for fold, (train_idx, val_idx) in enumerate(kf.split(img_paths)):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
@@ -154,21 +148,6 @@ def main():
 
                 output = model(input)
 
-                # loss = 0
-                # losses = {}
-                # for head in heads.keys():
-                #     losses[head] = criterion[head](output[head], batch[head].cuda(),
-                #                                    mask if head == 'hm' else reg_mask)
-                #     loss += losses[head]
-                # losses['loss'] = loss
-                #
-                # avg_meters['loss'].update(losses['loss'].item(), input.size(0))
-                # postfix = OrderedDict([('loss', avg_meters['loss'].avg)])
-                # for head in heads.keys():
-                #     avg_meters[head].update(losses[head].item(), input.size(0))
-                #     postfix[head + '_loss'] = avg_meters[head].avg
-                # pbar.set_postfix(postfix)
-
                 if args.hflip:
                     output_hf = model(torch.flip(input, (-1,)))
                     output_hf['hm'] = torch.flip(output_hf['hm'], (-1,))
@@ -191,23 +170,15 @@ def main():
                     if config['wh']:
                         output_hf['wh'] = torch.flip(output_hf['wh'], (-1,))
 
-                    # output['hm'] = (output['hm'] + output_hf['hm']) / 2
-                    # output['reg'] = (output['reg'] + output_hf['reg']) / 2
-                    # output['depth'] = (output['depth'] + output_hf['depth']) / 2
-                    # if config['rot'] == 'trig':
-                    #     output['trig'] = (output['trig'] + output_hf['trig']) / 2
-                    # if config['wh']:
-                    #     output['wh'] = (output['wh'] + output_hf['wh']) / 2
-
-                    output['hm'] = 0.8 * output['hm'] + 0.2 * output_hf['hm']
-                    output['reg'] = 0.8 * output['reg'] + 0.2 * output_hf['reg']
-                    output['depth'] = 0.8 * output['depth'] + 0.2 * output_hf['depth']
+                    output['hm'] = (output['hm'] + output_hf['hm']) / 2
+                    output['reg'] = (output['reg'] + output_hf['reg']) / 2
+                    output['depth'] = (output['depth'] + output_hf['depth']) / 2
                     if config['rot'] == 'trig':
-                        output['trig'] = 0.8 * output['trig'] + 0.2 * output_hf['trig']
+                        output['trig'] = (output['trig'] + output_hf['trig']) / 2
                     if config['wh']:
-                        output['wh'] = 0.8 * output['wh'] + 0.2 * output_hf['wh']
+                        output['wh'] = (output['wh'] + output_hf['wh']) / 2
 
-                dets = decode(
+                batch_det = decode(
                     config,
                     output['hm'],
                     output['reg'],
@@ -218,12 +189,13 @@ def main():
                     wh=output['wh'] if config['wh'] else None,
                     mask=mask,
                 )
-                dets = dets.detach().cpu().numpy()
+                batch_det = batch_det.cpu().numpy()
 
-                for k, det in enumerate(dets):
+                for k, det in enumerate(batch_det):
+                    img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
+                    dets[img_id] = det.tolist()
                     if args.nms:
                         det = nms(det, dist_th=args.nms_th)
-                    img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
                     pred_df.loc[pred_df.ImageId == img_id, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > args.score_th, :7])
 
                     if args.show:
@@ -247,7 +219,8 @@ def main():
         if not config['cv']:
             break
 
-    # print('loss: %f' %avg_meters['loss'].avg)
+    with open('outputs/decoded/val/%s.json' %args.name, 'w') as f:
+        json.dump(dets, f)
 
     name = '%s_%.2f' %(args.name, args.score_th)
     if args.nms:

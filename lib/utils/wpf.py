@@ -1,12 +1,59 @@
 import numpy as np
 
 
+def get_bbox(yaw, pitch, roll, x, y, z,
+             car_hw=1.02, car_hh=0.80, car_hl=2.31):
+    Rt = np.eye(4)
+    t = np.array([x, y, z])
+    Rt[:3, 3] = t
+    Rt[:3, :3] = euler_to_Rot(-yaw, -pitch, -roll).T
+    Rt = Rt[:3, :]
+    P = np.array([
+        [-car_hw,       0,       0, 1],
+        [ car_hw,       0,       0, 1],
+        [      0,  car_hh,       0, 1],
+        [      0, -car_hh,       0, 1],
+        [      0,       0,  car_hl, 1],
+        [      0,       0, -car_hl, 1],
+    ]).T
+    P = Rt @  P
+    P = P.T
+    xs, ys = convert_3d_to_2d(P[:, 0], P[:, 1], P[:, 2])
+    bbox = [xs.min(), ys.min(), xs.max(), ys.max()]
+
+    return bbox
+
+
+def bb_intersection_over_union(A, B):
+    xA = max(A[0], B[0])
+    yA = max(A[1], B[1])
+    xB = min(A[2], B[2])
+    yB = min(A[3], B[3])
+
+    # compute the area of intersection rectangle
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+
+    if interArea == 0:
+        return 0.0
+
+    # compute the area of both the prediction and ground-truth rectangles
+    boxAArea = (A[2] - A[0]) * (A[3] - A[1])
+    boxBArea = (B[2] - B[0]) * (B[3] - B[1])
+
+    iou = interArea / float(boxAArea + boxBArea - interArea)
+    return iou
+
+
 def calc_dist(d1, d2, norm=False):
     dx = d1[3] - d2[3]
     dy = d1[4] - d2[4]
     dz = d1[5] - d2[5]
     diff = (dx**2 + dy**2 + dz**2)**(1/2)
     return diff
+
+
+def calc_iou(det1, det2):
+
 
 
 def get_weighted_det(dets, conf_type='avg'):
@@ -30,7 +77,7 @@ def find_matching_det(dets, new_det, match_dist):
     best_index = -1
     for i in range(len(dets)):
         det = dets[i]
-        dist = calc_dist(det, new_det)
+        dist = calc_dist(det, new_det, norm=True)
         if dist < best_dist:
             best_index = i
             best_dist = dist

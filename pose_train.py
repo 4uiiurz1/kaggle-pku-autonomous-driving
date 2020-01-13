@@ -192,15 +192,15 @@ def main():
     if config['name'] is None:
         config['name'] = '%s_%s' % (config['arch'], datetime.now().strftime('%m%d%H'))
 
-    if not os.path.exists('pose_models/%s' % config['name']):
-        os.makedirs('pose_models/%s' % config['name'])
+    if not os.path.exists('models/pose/%s' % config['name']):
+        os.makedirs('models/pose/%s' % config['name'])
 
     if config['resume']:
-        with open('pose_models/%s/config.yml' % config['name'], 'r') as f:
+        with open('models/pose/%s/config.yml' % config['name'], 'r') as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         config['resume'] = True
 
-    with open('pose_models/%s/config.yml' % config['name'], 'w') as f:
+    with open('models/pose/%s/config.yml' % config['name'], 'w') as f:
         yaml.dump(config, f)
 
     print('-'*20)
@@ -213,10 +213,10 @@ def main():
     df = pd.read_csv('inputs/train.csv')
     img_ids = df['ImageId'].values
     pose_df = pd.read_csv('processed/pose_train.csv')
-    pose_df['img_path'] = 'processed/pose_images/' + pose_df['img_path']
+    pose_df['img_path'] = 'processed/pose_images/train/' + pose_df['img_path']
 
     if config['resume']:
-        checkpoint = torch.load('models/%s/checkpoint.pth.tar' % config['name'])
+        checkpoint = torch.load('models/pose/%s/checkpoint.pth.tar' % config['name'])
 
     if config['rot'] == 'eular':
         num_outputs = 3
@@ -284,7 +284,7 @@ def main():
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
         if (config['resume'] and fold < checkpoint['fold'] - 1) or (not config['resume'] and os.path.exists('pose_models/%s/model_%d.pth' % (config['name'], fold+1))):
-            log = pd.read_csv('pose_models/%s/log_%d.csv' %(config['name'], fold+1))
+            log = pd.read_csv('models/pose/%s/log_%d.csv' %(config['name'], fold+1))
             best_loss = log.loc[log['val_loss'].values.argmin(), 'val_loss']
             # best_loss, best_score = log.loc[log['val_loss'].values.argmin(), ['val_loss', 'val_score']].values
             folds.append(str(fold + 1))
@@ -308,7 +308,11 @@ def main():
             roll = rotate(roll, np.pi)
 
             if config['rot'] == 'eular':
-                raise NotImplementedError
+                label = np.array([
+                    yaw,
+                    pitch,
+                    roll
+                ]).T
             elif config['rot'] == 'trig':
                 label = np.array([
                     np.cos(yaw),
@@ -341,7 +345,11 @@ def main():
             roll = rotate(roll, np.pi)
 
             if config['rot'] == 'eular':
-                raise NotImplementedError
+                label = np.array([
+                    yaw,
+                    pitch,
+                    roll
+                ]).T
             elif config['rot'] == 'trig':
                 label = np.array([
                     np.cos(yaw),
@@ -437,7 +445,7 @@ def main():
             optimizer.load_state_dict(checkpoint['optimizer'])
             scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
-            log = pd.read_csv('pose_models/%s/log_%d.csv' % (config['name'], fold+1)).to_dict(orient='list')
+            log = pd.read_csv('models/pose/%s/log_%d.csv' % (config['name'], fold+1)).to_dict(orient='list')
             best_loss = checkpoint['best_loss']
 
         for epoch in range(start_epoch, config['epochs']):
@@ -463,10 +471,10 @@ def main():
             log['val_loss'].append(val_loss)
             # log['val_score'].append(val_score)
 
-            pd.DataFrame(log).to_csv('pose_models/%s/log_%d.csv' % (config['name'], fold+1), index=False)
+            pd.DataFrame(log).to_csv('models/pose/%s/log_%d.csv' % (config['name'], fold+1), index=False)
 
             if val_loss < best_loss:
-                torch.save(model.state_dict(), 'pose_models/%s/model_%d.pth' % (config['name'], fold+1))
+                torch.save(model.state_dict(), 'models/pose/%s/model_%d.pth' % (config['name'], fold+1))
                 best_loss = val_loss
                 # best_score = val_score
                 print("=> saved best model")
@@ -479,7 +487,7 @@ def main():
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict(),
             }
-            torch.save(state, 'pose_models/%s/checkpoint.pth.tar' % config['name'])
+            torch.save(state, 'models/pose/%s/checkpoint.pth.tar' % config['name'])
 
         print('val_loss:  %f' % best_loss)
         # print('val_score: %f' % best_score)
@@ -495,7 +503,7 @@ def main():
         })
 
         print(results)
-        results.to_csv('pose_models/%s/results.csv' % config['name'], index=False)
+        results.to_csv('models/pose/%s/results.csv' % config['name'], index=False)
 
         del model
         torch.cuda.empty_cache()

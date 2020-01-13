@@ -53,10 +53,9 @@ def parse_args():
 
     parser.add_argument('--det_name', default=None)
     parser.add_argument('--pose_name', default=None)
-    parser.add_argument('--score_th', default=0.3, type=float)
+    parser.add_argument('--score_th', default=0.1, type=float)
     parser.add_argument('--nms', default=True, type=str2bool)
     parser.add_argument('--nms_th', default=0.1, type=float)
-    parser.add_argument('--min_samples', default=1, type=int)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -77,13 +76,12 @@ def main():
 
     cudnn.benchmark = True
 
-    df = pd.read_csv('inputs/sample_submission.csv')
+    df = pd.read_csv('inputs/train.csv')
     img_ids = df['ImageId'].values
-    img_paths = np.array('inputs/test_images/' + df['ImageId'].values + '.jpg')
-    mask_paths = np.array('inputs/test_masks/' + df['ImageId'].values + '.jpg')
-    labels = np.array([convert_str_to_labels(s, names=['yaw', 'pitch', 'roll',
-                       'x', 'y', 'z', 'score']) for s in df['PredictionString']])
-    with open('outputs/decoded/test/%s.json' %args.det_name, 'r') as f:
+    img_paths = np.array('inputs/train_images/' + df['ImageId'].values + '.jpg')
+    mask_paths = np.array('inputs/train_masks/' + df['ImageId'].values + '.jpg')
+    labels = np.array([convert_str_to_labels(s) for s in df['PredictionString']])
+    with open('outputs/decoded/val/%s.json' %args.det_name, 'r') as f:
         dets = json.load(f)
 
     if config['rot'] == 'eular':
@@ -111,63 +109,13 @@ def main():
     name = '%s_%.2f' %(args.det_name, args.score_th)
     if args.nms:
         name += '_nms%.2f' %args.nms_th
-    if args.min_samples > 0:
-        name += '_min%d' %args.min_samples
 
-    output_dir = 'processed/pose_images/test/%s' % name
+    output_dir = 'processed/pose_images/val/%s' % name
     os.makedirs(output_dir, exist_ok=True)
-    for img_id, img_path in tqdm(zip(img_ids, img_paths), total=len(img_ids)):
-        img = cv2.imread(img_path)
-        height, width = img.shape[:2]
 
-        det = np.array(dets[img_id])
-        if np.sum(det[:, 6] > args.score_th) >= args.min_samples:
-            det = det[det[:, 6] > args.score_th]
-        else:
-            det = det[:args.min_samples]
-        if args.nms:
-            det = nms(det, dist_th=args.nms_th)
-
-        for k in range(len(det)):
-            pitch, yaw, roll, x, y, z, score, w, h = det[k]
-
-            det_df['ImageId'].append(img_id)
-            det_df['det'].append(det[k])
-            output_path = '%s_%d.jpg' %(img_id, k)
-            det_df['img_path'].append(output_path)
-
-            x, y = convert_3d_to_2d(x, y, z)
-            w *= 1.2
-            h *= 1.2
-            xmin = int(round(x - w / 2))
-            xmax = int(round(x + w / 2))
-            ymin = int(round(y - h / 2))
-            ymax = int(round(y + h / 2))
-
-            cropped_img = img[ymin:ymax, xmin:xmax]
-            if cropped_img.shape[0] > 0 and cropped_img.shape[1] > 0:
-                cv2.imwrite(os.path.join(output_dir, output_path), cropped_img)
-                det_df['mask'].append(1)
-            else:
-                det_df['mask'].append(0)
-
-    det_df = pd.DataFrame(det_df)
-
-    test_set = PoseDataset(
-        output_dir + '/' + det_df['img_path'].values,
-        det_df['det'].values,
-        transform=test_transform,
-        masks=det_df['mask'].values)
-    test_loader = torch.utils.data.DataLoader(
-        test_set,
-        batch_size=config['batch_size'],
-        shuffle=False,
-        num_workers=config['num_workers'],
-        # pin_memory=True,
-    )
-
-    dets = []
-    for fold in range(config['n_splits']):
+    df = []
+    kf = KFold(n_splits=config['n_splits'], shuffle=True, random_state=41)
+    for fold, (train_idx, val_idx) in enumerate(kf.split(img_paths)):
         print('Fold [%d/%d]' %(fold + 1, config['n_splits']))
 
         # create model
@@ -183,6 +131,63 @@ def main():
         model.load_state_dict(torch.load(model_path))
 
         model.eval()
+
+        val_img_ids = img_ids[val_idx]
+        val_img_paths = img_paths[val_idx]
+
+        fold_det_df = {
+            'ImageId': [],
+            'img_path': [],
+            'det': [],
+            'mask': [],
+        }
+
+        for img_id, img_path in tqdm(zip(val_img_ids, val_img_paths), total=len(val_img_ids)):
+            img = cv2.imread(img_path)
+            height, width = img.shape[:2]
+
+            det = np.array(dets[img_id])
+            det = det[det[:, 6] > args.score_th]
+            if args.nms:
+                det = nms(det, dist_th=args.nms_th)
+
+            for k in range(len(det)):
+                pitch, yaw, roll, x, y, z, score, w, h = det[k]
+
+                fold_det_df['ImageId'].append(img_id)
+                fold_det_df['det'].append(det[k])
+                output_path = '%s_%d.jpg' %(img_id, k)
+                fold_det_df['img_path'].append(output_path)
+
+                x, y = convert_3d_to_2d(x, y, z)
+                w *= 1.1
+                h *= 1.1
+                xmin = int(round(x - w / 2))
+                xmax = int(round(x + w / 2))
+                ymin = int(round(y - h / 2))
+                ymax = int(round(y + h / 2))
+
+                cropped_img = img[ymin:ymax, xmin:xmax]
+                if cropped_img.shape[0] > 0 and cropped_img.shape[1] > 0:
+                    cv2.imwrite(os.path.join(output_dir, output_path), cropped_img)
+                    fold_det_df['mask'].append(1)
+                else:
+                    fold_det_df['mask'].append(0)
+
+        fold_det_df = pd.DataFrame(fold_det_df)
+
+        test_set = PoseDataset(
+            output_dir + '/' + fold_det_df['img_path'].values,
+            fold_det_df['det'].values,
+            transform=test_transform,
+            masks=fold_det_df['mask'].values)
+        test_loader = torch.utils.data.DataLoader(
+            test_set,
+            batch_size=config['batch_size'],
+            shuffle=False,
+            num_workers=config['num_workers'],
+            # pin_memory=True,
+        )
 
         fold_dets = []
         with torch.no_grad():
@@ -209,23 +214,26 @@ def main():
                 batch_det[mask, 2] = roll[mask]
 
                 fold_dets.append(batch_det)
+
         fold_dets = np.vstack(fold_dets)
-        dets.append(fold_dets)
-    dets = np.array(dets)
-    dets = np.mean(dets, axis=0)
-    det_df['det'] = dets.tolist()
-    det_df = det_df.groupby('ImageId')['det'].apply(list)
-    df = pd.DataFrame({
-        'ImageId': det_df.index.values,
-        'PredictionString': det_df.values,
-    })
+
+        fold_det_df['det'] = fold_dets.tolist()
+        fold_det_df = fold_det_df.groupby('ImageId')['det'].apply(list)
+        fold_det_df = pd.DataFrame({
+            'ImageId': fold_det_df.index.values,
+            'PredictionString': fold_det_df.values,
+        })
+
+        df.append(fold_det_df)
+        break
+    df = pd.concat(df).reset_index(drop=True)
 
     for i in tqdm(range(len(df))):
         img_id = df.loc[i, 'ImageId']
         det = np.array(df.loc[i, 'PredictionString'])
 
         if args.show:
-            img = cv2.imread('inputs/test_images/%s.jpg' %img_id)
+            img = cv2.imread('inputs/train_images/%s.jpg' %img_id)
             img_pred = visualize(img, det)
             plt.imshow(img_pred[..., ::-1])
             plt.show()
@@ -234,7 +242,7 @@ def main():
 
     name += '_%s' %args.pose_name
 
-    df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
+    df.to_csv('outputs/submissions/val/%s.csv' %name, index=False)
 
 
 if __name__ == '__main__':

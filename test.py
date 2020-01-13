@@ -40,7 +40,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.postprocess.nms import nms
+from lib.utils.nms import nms
 
 
 def parse_args():

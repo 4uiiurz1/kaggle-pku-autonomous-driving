@@ -33,6 +33,8 @@ python train.py --arch dla34_ddd_3dop --input_w 2560 --input_h 2048 --head_conv 
 - ws, gnがうまくいかないのはbackboneはbnだからとか？
 - pseudo labelingの結果がvalの精度は高くてtestの精度はいまいち。
   - train + testで学習させると予測精度の低いtestの出力をモデルがそのまま学習してそう
+- pose_trainではhflipは精度下がる。
+  - detectionでもposeのlossには悪影響及ぼしてたのかも...
 
 ## TODO
 ### 実装
@@ -111,7 +113,7 @@ resnet50_v1d_fpn_121512 | 0.25247039883369304 | 0.110
 resnet34_v1b_fpn_121721 | 0.24874580307912306 |
 dla34_ddd_3dop_122006   | 0.2542148697800283  | 0.117
 resnet18_fpn_122223     | 0.2572243059006951  | 0.118
-dla34_ddd_3dop_123008   |   |  
+dla34_ddd_3dop_123008   | 0.2681900383192367  | 0.118
 
 #### gn+ws
 - resnet18_fpn
@@ -201,4 +203,25 @@ model | val mAP | PublicLB
 #### dla34
 - 0.2566528431787339
 
-map: 0.2681900383192367
+#### pose
+##### resnet18_011006
+- detection model: resnet18_fpn_122223
+
+model | val mAP | PublicLB
+------|---------|----------
+w/o pose | 0.2572243059006951  | 0.118
+wh * 1.0 | 0.257399093175697 |
+wh * 1.1 | 0.25740901101286534 |
+wh * 1.2 | 0.25737551183546703 |
+
+##### fold 1
+- detection model: resnet18_fpn_122223
+
+model | val mAP | PublicLB
+------|---------|----------
+resnet18_011006 | 0.2596  |
+se_resnext50_32x4d_011118 | 0.25973812992359474 |
+| resnet18_011212 | 0.25979223079859665 |
+| resnet18_011221 | 0.2597922785295369  |
+
+map: 0.25973812992359474

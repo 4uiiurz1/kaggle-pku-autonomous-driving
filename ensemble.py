@@ -40,7 +40,7 @@ from lib.optimizers import RAdam
 from lib import losses
 from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.postprocess.nms import nms
+from lib.utils.nms import nms
 
 
 def parse_args():
@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument('--score_th', default=0.3, type=float)
     parser.add_argument('--nms', default=True, type=str2bool)
     parser.add_argument('--nms_th', default=0.1, type=float)
+    parser.add_argument('--min_samples', default=1, type=int)
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -153,13 +154,18 @@ def main():
         if config['nms']:
             det = nms(det, dist_th=config['nms_th'])
 
+        if np.sum(det[:, 6] > config['score_th']) >= config['min_samples']:
+            det = det[det[:, 6] > config['score_th']]
+        else:
+            det = det[:config['min_samples']]
+
         if config['show']:
             img = cv2.imread('inputs/test_images/%s.jpg' %img_id)
-            img_pred = visualize(img, det[det[:, 6] > config['score_th']])
+            img_pred = visualize(img, det)
             plt.imshow(img_pred[..., ::-1])
             plt.show()
 
-        df.loc[i, 'PredictionString'] = convert_labels_to_str(det[det[:, 6] > config['score_th'], :7])
+        df.loc[i, 'PredictionString'] = convert_labels_to_str(det[:, :7])
 
     with open('outputs/decoded/test/%s.json' %config['name'], 'w') as f:
         json.dump(dets, f)
