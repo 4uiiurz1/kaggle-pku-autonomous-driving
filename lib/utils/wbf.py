@@ -46,8 +46,8 @@ def get_weighted_det(dets, conf_type='avg'):
     return det
 
 
-def find_matching_det(dets, new_det, match_dist):
-    best_iou = 0.30
+def find_matching_det(dets, new_det, iou_th):
+    best_iou = iou_th
     best_index = -1
     for i in range(len(dets)):
         det = dets[i]
@@ -59,7 +59,7 @@ def find_matching_det(dets, new_det, match_dist):
     return best_index, best_iou
 
 
-def wpf(dets_list, weights=[0.3, 0.7], dist_th=1, skip_det_thr=0.0, conf_type='avg', allows_overflow=False):
+def wbf(dets_list, weights=[0.3, 0.7], iou_th=0.55, skip_det_thr=0.0, conf_type='avg', allows_overflow=False):
     if weights is None:
         weights = np.ones(len(dets_list))
     if len(weights) != len(dets_list):
@@ -86,7 +86,7 @@ def wpf(dets_list, weights=[0.3, 0.7], dist_th=1, skip_det_thr=0.0, conf_type='a
 
     # Clusterize dets
     for i in range(len(dets)):
-        index, best_iou = find_matching_det(weighted_dets, dets[i], dist_th)
+        index, best_iou = find_matching_det(weighted_dets, dets[i], iou_th)
         if index != -1:
             new_dets[index].append(dets[i])
             weighted_dets[index] = get_weighted_det(new_dets[index], conf_type)
