@@ -3,13 +3,17 @@ __pycache__/
 *.ipynb
 inputs/*
 processed/*
-models/*
-submissions/*
-preds/*
-outputs/*
+models/detection/*
+models/pose/*
+outputs/decoded/*
+outputs/raw/*
+outputs/submissions/val/*
+outputs/submissions/test/*
 notebooks/*
 pretrained_weights/*
 *.bat
 
 ensemble_test.py
 ensemble_val.py
+
+!.gitkeep
