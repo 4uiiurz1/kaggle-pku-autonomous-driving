@@ -49,6 +49,6 @@ Ensemble each fold models and two models (ResNet18, DLA34) by averaging the raw 
 ### Score summary
 model | val mAP | PublicLB|
 ------|:-------:|:----------:
-ResNet18 + FPN (resnet18_fpn_12222) | 0.2572243059006951  | 0.118
+ResNet18 + FPN (resnet18_fpn_12223) | 0.2572243059006951  | 0.118
 DLA34 + FPN (dla34_ddd_3dop_123008) | 0.2681900383192367  | 0.118
 Ensemble (ensemble_010414)          | -                   | 0.121
