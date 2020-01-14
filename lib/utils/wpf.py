@@ -1,29 +1,6 @@
 import numpy as np
 
 
-def get_bbox(yaw, pitch, roll, x, y, z,
-             car_hw=1.02, car_hh=0.80, car_hl=2.31):
-    Rt = np.eye(4)
-    t = np.array([x, y, z])
-    Rt[:3, 3] = t
-    Rt[:3, :3] = euler_to_Rot(-yaw, -pitch, -roll).T
-    Rt = Rt[:3, :]
-    P = np.array([
-        [-car_hw,       0,       0, 1],
-        [ car_hw,       0,       0, 1],
-        [      0,  car_hh,       0, 1],
-        [      0, -car_hh,       0, 1],
-        [      0,       0,  car_hl, 1],
-        [      0,       0, -car_hl, 1],
-    ]).T
-    P = Rt @  P
-    P = P.T
-    xs, ys = convert_3d_to_2d(P[:, 0], P[:, 1], P[:, 2])
-    bbox = [xs.min(), ys.min(), xs.max(), ys.max()]
-
-    return bbox
-
-
 def calc_dist(d1, d2, norm=False):
     dx = d1[3] - d2[3]
     dy = d1[4] - d2[4]
@@ -57,12 +34,27 @@ def find_matching_det(dets, new_det, match_dist):
         if dist < best_dist:
             best_index = i
             best_dist = dist
-    print(best_dist)
 
     return best_index, best_dist
 
 
-def wpf(dets_list, weights=None, dist_th=1, skip_det_th=0.0, conf_type='avg', allows_overflow=False):
+def wpf(dets_list, weights=None, dist_th=2.0, skip_det_th=0.0, conf_type='avg', allows_overflow=False):
+    '''
+    dets_list:
+        List of 6DoF predictions from each model, each det has 4 values ([pitch, yaw, roll, x, y, z, score], same as the format of submission).
+        It has 3 dimensions (models_number, model_preds, 7)
+    weights:
+        List of weights for each model. Default: None, which means weight == 1 for each model.
+    dist_thr:
+        3D Distance value for points to be a match.
+    skip_det_th:
+        Exclude points with score lower than this variable.
+    conf_type:
+        How to calculate confidence in weighted boxes. 'avg': average value, 'max': maximum value.
+    allows_overflow:
+        False if we want confidence score not exceed 1.0.
+    '''
+
     if weights is None:
         weights = np.ones(len(dets_list))
     if len(weights) != len(dets_list):

@@ -91,6 +91,7 @@ def main():
         dets_list = []
         for df in df_list:
             dets_list.append(np.array(df.loc[i, 'PredictionString'].split()).reshape([-1, 7]).astype('float'))
+        print(dets_list)
         dets = wpf(dets_list, dist_th=config['dist_th'], skip_det_th=config['skip_det_th'],
                    weights=config['weights'])
         dets = dets[dets[:, 6] > config['score_th']]
