@@ -16,32 +16,9 @@ import joblib
 import cv2
 import yaml
 
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
-from skimage.io import imread
-
-from apex import amp
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
-import torch.optim as optim
-from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader
-from torch.utils.data.sampler import WeightedRandomSampler
-import torch.backends.cudnn as cudnn
-import torchvision
-
-from lib.datasets import Dataset
 from lib.utils.utils import *
-from lib.models.model_factory import get_model
-from lib.optimizers import RAdam
-from lib import losses
-from lib.decodes import decode
 from lib.utils.vis import visualize
-from lib.utils.nms import nms
 from lib.utils.wpf import wpf
-from lib.utils.wbf import wbf
 
 
 def parse_args():
@@ -106,6 +83,8 @@ def main():
         new_df.loc[i, 'PredictionString'] = convert_labels_to_str(dets)
 
     print('Number of cars: %d' %cnt)
+
+    new_df.to_csv('outputs/submissions/test/%s.csv' %config['name'], index=False)
 
 
 if __name__ == '__main__':
