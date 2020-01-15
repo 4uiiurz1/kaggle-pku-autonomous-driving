@@ -16,8 +16,8 @@ Heatmap's loss is Focal Loss, and the others are L1Loss. The weight of wh loss i
 ### Network architecture
 - [ResNet18 (pretrained ImageNet)](https://github.com/Cadene/pretrained-models.pytorch) + FPN (channels: 256->256->256)
 - [DLA34 (pretrained KITTI 3DOP)](https://github.com/xingyizhou/CenterNet/blob/master/readme/MODEL_ZOO.md) + FPN (channels: 256->128->64)
-- Input size: 2560 x 2048
-- Output size: 640 x 512
+- Input size: 2560 x 2048 (2560 x 1024)
+- Output size: 640 x 512 (640 x 256)
 
 Increasing the input size is very effective, mAP was improved dramatically.
 I tried deeper networks (ResNet34, 50) but not worked.
