@@ -70,6 +70,7 @@ def parse_args():
     parser.add_argument('--gn', default=False, type=str2bool)
     parser.add_argument('--ws', default=False, type=str2bool)
     parser.add_argument('--lhalf', default=True, type=str2bool)
+    parser.add_argument('--car_spec_bbox', default=True, type=str2bool)
 
     # pseudo labeling
     parser.add_argument('--load_model', default=None)
@@ -83,7 +84,7 @@ def parse_args():
     parser.add_argument('--depth_loss', default='L1Loss')
     parser.add_argument('--eular_loss', default='L1Loss')
     parser.add_argument('--trig_loss', default='L1Loss')
-    parser.add_argument('--quat_loss', default='L1Loss')
+    parser.add_argument('--quat_loss', default='DotProductLoss')
 
     # optimizer
     parser.add_argument('--optimizer', default='RAdam')
@@ -383,6 +384,7 @@ def main():
             hflip=config['hflip_p'] if config['hflip'] else 0,
             scale=config['scale_p'] if config['scale'] else 0,
             scale_limit=config['scale_limit'],
+            car_spec_bbox=config['car_spec_bbox'],
             # test_img_paths=test_img_paths,
             # test_mask_paths=test_mask_paths,
             # test_outputs=test_outputs,
@@ -402,7 +404,8 @@ def main():
             input_w=config['input_w'],
             input_h=config['input_h'],
             transform=val_transform,
-            lhalf=config['lhalf'])
+            lhalf=config['lhalf'],
+            car_spec_bbox=config['car_spec_bbox'])
         val_loader = torch.utils.data.DataLoader(
             val_set,
             batch_size=config['batch_size'],

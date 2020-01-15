@@ -38,13 +38,13 @@ python train.py --arch dla34_ddd_3dop --input_w 2560 --input_h 2048 --head_conv 
 
 ## TODO
 ### 実装
-- [ ] wh用いて車両crop→それぞれ回帰
+- [x] wh用いて車両crop→それぞれ回帰
 - [x] hflip TTA
-- [ ] pseudo labeling
+- [x] pseudo labeling
 - [x] ensemble
 
 ### 実験
-- [ ] より大きい画像サイズ(2560 x 2048)
+- [x] より大きい画像サイズ(2560 x 2048)
   - whの重み変えた方がいいかも
 
 ## Experiments

@@ -61,7 +61,7 @@ def main():
         'roll': [],
     }
 
-    output_dir = 'processed/pose_images'
+    output_dir = 'processed/pose_images/train'
     os.makedirs(output_dir, exist_ok=True)
 
     for img_id, img_path, label in tqdm(zip(img_ids, img_paths, labels), total=len(img_ids)):
