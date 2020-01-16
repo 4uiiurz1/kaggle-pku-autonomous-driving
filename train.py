@@ -70,7 +70,6 @@ def parse_args():
     parser.add_argument('--gn', default=False, type=str2bool)
     parser.add_argument('--ws', default=False, type=str2bool)
     parser.add_argument('--lhalf', default=True, type=str2bool)
-    parser.add_argument('--car_spec_bbox', default=True, type=str2bool)
 
     # pseudo labeling
     parser.add_argument('--load_model', default=None)
@@ -84,7 +83,7 @@ def parse_args():
     parser.add_argument('--depth_loss', default='L1Loss')
     parser.add_argument('--eular_loss', default='L1Loss')
     parser.add_argument('--trig_loss', default='L1Loss')
-    parser.add_argument('--quat_loss', default='DotProductLoss')
+    parser.add_argument('--quat_loss', default='L1Loss')
 
     # optimizer
     parser.add_argument('--optimizer', default='RAdam')

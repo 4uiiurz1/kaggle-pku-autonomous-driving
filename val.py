@@ -138,6 +138,8 @@ def main():
 
         model.eval()
 
+        outputs = {}
+
         with torch.no_grad():
             pbar = tqdm(total=len(val_loader))
             for i, batch in enumerate(val_loader):
@@ -193,6 +195,18 @@ def main():
 
                 for k, det in enumerate(batch_det):
                     img_id = os.path.splitext(os.path.basename(batch['img_path'][k]))[0]
+
+                    outputs[img_id] = {
+                        'hm': output['hm'][k:k+1].cpu(),
+                        'reg': output['reg'][k:k+1].cpu(),
+                        'depth': output['depth'][k:k+1].cpu(),
+                        'eular': output['eular'][k:k+1].cpu() if config['rot'] == 'eular' else None,
+                        'trig': output['trig'][k:k+1].cpu() if config['rot'] == 'trig' else None,
+                        'quat': output['quat'][k:k+1].cpu() if config['rot'] == 'quat' else None,
+                        'wh': output['wh'][k:k+1].cpu() if config['wh'] else None,
+                        'mask': mask[k:k+1].cpu(),
+                    }
+
                     dets[img_id] = det.tolist()
                     if args.nms:
                         det = nms(det, dist_th=args.nms_th)
@@ -213,6 +227,8 @@ def main():
 
                 pbar.update(1)
             pbar.close()
+
+        torch.save(outputs, 'outputs/raw/val/%s_%d.pth' %(args.name, fold + 1))
 
         torch.cuda.empty_cache()
 

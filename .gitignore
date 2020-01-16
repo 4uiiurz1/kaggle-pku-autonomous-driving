@@ -13,8 +13,6 @@ notebooks/*
 pretrained_weights/*
 *.bat
 tmp*/*
-
-ensemble_test.py
-ensemble_val.py
+visualize_submission.py
 
 !.gitkeep

@@ -69,20 +69,3 @@ class FocalLoss(nn.Module):
         output = torch.sigmoid(output)
         loss = self.neg_loss(output, target, mask)
         return loss
-
-
-class DotProductLoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, output, target, mask):
-        output *= mask
-        target *= mask
-
-        # normalize
-        # output /= torch.norm(output, p=2, dim=1, keepdim=True) + 1e-4
-
-        dot = torch.sum(output * target, 1, keepdim=True)
-        loss = (1 - dot) / 2
-        loss = loss.sum() / mask.sum()
-        return loss

@@ -103,6 +103,16 @@ def main():
                 car_hw=1.21,
                 car_hh=0.95,
                 car_hl=2.80)
+
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            bbox_size = max(w, h)
+            bbox = np.array([
+                x - bbox_size / 2,
+                y - bbox_size / 2,
+                x + bbox_size / 2,
+                y + bbox_size / 2,
+            ])
+
             bbox = np.round(bbox).astype('int')
             bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, width - 1)
             bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, height - 1)
