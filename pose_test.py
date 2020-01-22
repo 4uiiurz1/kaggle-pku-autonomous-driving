@@ -137,12 +137,11 @@ def main():
             det_df['img_path'].append(output_path)
 
             x, y = convert_3d_to_2d(x, y, z)
-            w *= 1.1
-            h *= 1.1
-            xmin = int(round(x - w / 2))
-            xmax = int(round(x + w / 2))
-            ymin = int(round(y - h / 2))
-            ymax = int(round(y + h / 2))
+            bbox_size = max(w, h)
+            xmin = int(round(x - bbox_size / 2))
+            xmax = int(round(x + bbox_size / 2))
+            ymin = int(round(y - bbox_size / 2))
+            ymax = int(round(y + bbox_size / 2))
 
             cropped_img = img[ymin:ymax, xmin:xmax]
             if cropped_img.shape[0] > 0 and cropped_img.shape[1] > 0:

@@ -8,6 +8,7 @@ import random
 import warnings
 from datetime import datetime
 import json
+import re
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -82,7 +83,8 @@ def main():
         print('%s: %s' % (key, str(config[key])))
     print('-'*20)
 
-    with open('models/detection/%s/config.yml' % config['models'][0], 'r') as f:
+
+    with open('models/detection/%s/config.yml' % re.sub('_uncropped', '', config['models'][0]), 'r') as f:
         model_config = yaml.load(f, Loader=yaml.FullLoader)
 
     df = pd.read_csv('inputs/sample_submission.csv')
@@ -103,10 +105,10 @@ def main():
                 'hm': 0,
                 'reg': 0,
                 'depth': 0,
-                'eular': 0 if model_config['rot'] == 'eular' else None,
-                'trig': 0 if model_config['rot'] == 'trig' else None,
-                'quat': 0 if model_config['rot'] == 'quat' else None,
-                'wh': 0 if model_config['wh'] else None,
+                'eular': None,
+                'trig': 0,
+                'quat': None,
+                'wh': 0,
                 'mask': 0,
             }
 

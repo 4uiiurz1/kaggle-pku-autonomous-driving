@@ -383,7 +383,6 @@ def main():
             hflip=config['hflip_p'] if config['hflip'] else 0,
             scale=config['scale_p'] if config['scale'] else 0,
             scale_limit=config['scale_limit'],
-            car_spec_bbox=config['car_spec_bbox'],
             # test_img_paths=test_img_paths,
             # test_mask_paths=test_mask_paths,
             # test_outputs=test_outputs,
@@ -403,8 +402,7 @@ def main():
             input_w=config['input_w'],
             input_h=config['input_h'],
             transform=val_transform,
-            lhalf=config['lhalf'],
-            car_spec_bbox=config['car_spec_bbox'])
+            lhalf=config['lhalf'])
         val_loader = torch.utils.data.DataLoader(
             val_set,
             batch_size=config['batch_size'],

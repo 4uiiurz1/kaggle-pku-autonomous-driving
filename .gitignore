@@ -13,6 +13,6 @@ notebooks/*
 pretrained_weights/*
 *.bat
 tmp*/*
-visualize_submission.py
+visualize_submission*.py
 
 !.gitkeep

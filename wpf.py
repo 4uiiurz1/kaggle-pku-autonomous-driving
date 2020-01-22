@@ -67,7 +67,12 @@ def main():
     for i in tqdm(range(len(new_df))):
         dets_list = []
         for df in df_list:
-            dets_list.append(np.array(df.loc[i, 'PredictionString'].split()).reshape([-1, 7]).astype('float'))
+            dets = np.array(df.loc[i, 'PredictionString'].split()).reshape([-1, 7]).astype('float')
+            dets[..., -1] = np.argsort(dets[..., -1]) + 1
+            print(dets)
+            dets[..., -1] /= np.sum(dets[..., -1])
+            print(dets)
+            dets_list.append(dets)
         dets = wpf(dets_list, dist_th=config['dist_th'], skip_det_th=config['skip_det_th'],
                    weights=config['weights'])
         dets = dets[dets[:, 6] > config['score_th']]

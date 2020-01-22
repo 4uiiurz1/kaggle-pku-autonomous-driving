@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument('--nms_th', default=0.1, type=float)
     parser.add_argument('--min_samples', default=1, type=int)
     parser.add_argument('--hflip', default=False, type=str2bool)
+    parser.add_argument('--uncropped', action='store_true')
     parser.add_argument('--show', action='store_true')
 
     args = parser.parse_args()
@@ -73,10 +74,18 @@ def main():
     cudnn.benchmark = True
 
     df = pd.read_csv('inputs/sample_submission.csv')
+    img_ids = df['ImageId'].values
     img_paths = np.array('inputs/test_images/' + df['ImageId'].values + '.jpg')
     mask_paths = np.array('inputs/test_masks/' + df['ImageId'].values + '.jpg')
     labels = np.array([convert_str_to_labels(s, names=['yaw', 'pitch', 'roll',
                        'x', 'y', 'z', 'score']) for s in df['PredictionString']])
+
+    if args.uncropped:
+        cropped_img_ids = pd.read_csv('inputs/testset_cropped_imageids.csv')['ImageId'].values
+        for i, img_id in enumerate(img_ids):
+            if img_id in cropped_img_ids:
+                img_paths[i] = 'inputs/test_images_uncropped/' + img_id + '.jpg'
+                mask_paths[i] = 'inputs/test_masks_uncropped/' + img_id + '.jpg'
 
     test_set = Dataset(
         img_paths,
@@ -114,6 +123,8 @@ def main():
         heads['wh'] = 2
 
     name = args.name
+    if args.uncropped:
+        name += '_uncropped'
     if args.hflip:
         name += '_hf'
 
@@ -255,45 +266,50 @@ def main():
             if not config['cv']:
                 df['PredictionString'] = preds_fold
                 name = '%s_1_%.2f' %(args.name, args.score_th)
+                if args.uncropped:
+                    name += '_uncropped'
                 if args.nms:
                     name += '_nms%.2f' %args.nms_th
                 df.to_csv('outputs/submissions/test/%s.csv' %name, index=False)
                 return
 
-        # ensemble duplicate images
-        dup_df = pd.read_csv('processed/test_image_hash.csv')
-        dups = dup_df.hash.value_counts()
-        dups = dups.loc[dups>1]
+        if not args.uncropped:
+            # ensemble duplicate images
+            dup_df = pd.read_csv('processed/test_image_hash.csv')
+            dups = dup_df.hash.value_counts()
+            dups = dups.loc[dups>1]
 
-        for i in range(len(dups)):
-            img_ids = dup_df[dup_df.hash == dups.index[i]].ImageId
+            for i in range(len(dups)):
+                img_ids = dup_df[dup_df.hash == dups.index[i]].ImageId
 
-            output = {
-                'hm': 0,
-                'reg': 0,
-                'depth': 0,
-                'eular': 0 if config['rot'] == 'eular' else None,
-                'trig': 0 if config['rot'] == 'trig' else None,
-                'quat': 0 if config['rot'] == 'quat' else None,
-                'wh': 0 if config['wh'] else None,
-                'mask': 0,
-            }
-            for img_id in img_ids:
-                output['hm'] += merged_outputs[img_id]['hm'] / len(img_ids)
-                output['reg'] += merged_outputs[img_id]['reg'] / len(img_ids)
-                output['depth'] += merged_outputs[img_id]['depth'] / len(img_ids)
-                if config['rot'] == 'eular':
-                    output['eular'] += merged_outputs[img_id]['eular'] / len(img_ids)
-                if config['rot'] == 'trig':
-                    output['trig'] += merged_outputs[img_id]['trig'] / len(img_ids)
-                if config['rot'] == 'quat':
-                    output['quat'] += merged_outputs[img_id]['quat'] / len(img_ids)
-                if config['wh']:
-                    output['wh'] += merged_outputs[img_id]['wh'] / len(img_ids)
-                output['mask'] += merged_outputs[img_id]['mask'] / len(img_ids)
+                output = {
+                    'hm': 0,
+                    'reg': 0,
+                    'depth': 0,
+                    'eular': 0 if config['rot'] == 'eular' else None,
+                    'trig': 0 if config['rot'] == 'trig' else None,
+                    'quat': 0 if config['rot'] == 'quat' else None,
+                    'wh': 0 if config['wh'] else None,
+                    'mask': 0,
+                }
+                for img_id in img_ids:
+                    if img_id in cropped_img_ids:
+                        print('fooo')
+                    output['hm'] += merged_outputs[img_id]['hm'] / len(img_ids)
+                    output['reg'] += merged_outputs[img_id]['reg'] / len(img_ids)
+                    output['depth'] += merged_outputs[img_id]['depth'] / len(img_ids)
+                    if config['rot'] == 'eular':
+                        output['eular'] += merged_outputs[img_id]['eular'] / len(img_ids)
+                    if config['rot'] == 'trig':
+                        output['trig'] += merged_outputs[img_id]['trig'] / len(img_ids)
+                    if config['rot'] == 'quat':
+                        output['quat'] += merged_outputs[img_id]['quat'] / len(img_ids)
+                    if config['wh']:
+                        output['wh'] += merged_outputs[img_id]['wh'] / len(img_ids)
+                    output['mask'] += merged_outputs[img_id]['mask'] / len(img_ids)
 
-            for img_id in img_ids:
-                merged_outputs[img_id] = output
+                for img_id in img_ids:
+                    merged_outputs[img_id] = output
 
         torch.save(merged_outputs, 'outputs/raw/test/%s.pth' %name)
 
@@ -339,6 +355,8 @@ def main():
         json.dump(dets, f)
 
     name = '%s_%.2f' %(args.name, args.score_th)
+    if args.uncropped:
+        name += '_uncropped'
     if args.nms:
         name += '_nms%.2f' %args.nms_th
     if args.hflip:
