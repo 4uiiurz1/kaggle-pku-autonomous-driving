@@ -16,8 +16,8 @@ I reimplemented CenterNet almost from scratch with reference to [the author's im
 Heatmap's loss is Focal Loss, and the others are L1Loss. The weight of wh loss is 0.05. Mask regions of mask images are ignored when calculating loss.
 
 ### Network Architecture
-- [ResNet18 (pretrained ImageNet)](https://github.com/Cadene/pretrained-models.pytorch) + FPN (channels: 256->256->256)
-- [DLA34 (pretrained KITTI 3DOP)](https://github.com/xingyizhou/CenterNet/blob/master/readme/MODEL_ZOO.md) + FPN (channels: 256->128->64)
+- [ResNet18 (pretrained ImageNet)](https://github.com/Cadene/pretrained-models.pytorch) + FPN (channels: 256->128->64)
+- [DLA34 (pretrained KITTI 3DOP)](https://github.com/xingyizhou/CenterNet/blob/master/readme/MODEL_ZOO.md) + FPN (channels: 256->256->256)
 - Input size: 2560 x 2048 (2560 x 1024)
 - Output size: 640 x 512 (640 x 256)
 
@@ -71,5 +71,5 @@ python train.py --name resnet18_fpn --arch resnet18_fpn
 python test.py --name resnet18_fpn
 python train.py --name dla34_ddd_3dop --arch dla34_ddd_3dop --num_filters 256,256,256
 python test.py --name dla34_ddd_3dop
-python ensemble.py --models dla34_ddd_3dop,resnet18_fpn
+python ensemble_test.py --models dla34_ddd_3dop,resnet18_fpn
 ```
