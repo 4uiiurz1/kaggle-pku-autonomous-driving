@@ -1,6 +1,8 @@
 # kaggle-pku-autonomous-driving
 
-## Approach
+Part of 5th place solution for Peking University/Baidu - Autonomous Driving on Kaggle (https://www.kaggle.com/c/pku-autonomous-driving).
+
+## Solution
 My approach is based on [CenterNet](https://github.com/xingyizhou/CenterNet).
 I reimplemented CenterNet almost from scratch with reference to [the author's implementation](https://github.com/xingyizhou/CenterNet).
 
@@ -47,11 +49,11 @@ I tried deeper networks (ResNet34, 50) but not worked.
 Ensemble each fold models and two models (ResNet18, DLA34) by averaging the raw output maps.
 
 ### Score Summary
-model | val mAP (tito's script) | PublicLB|
-------|:-------:|:----------:
-ResNet18 + FPN (resnet18_fpn_122223) | 0.2572243059006951  | 0.118
-DLA34 + FPN (dla34_ddd_3dop_123008) | 0.2681900383192367  | 0.118
-Ensemble (ensemble_010414)          | 0.27363538075234406 | 0.121
+| model          | val mAP (tito's script) | PublicLB   | PrivateLB |
+|----------------|:-----------------------:|:----------:|:----------|
+| ResNet18 + FPN | 0.257224305900695       | 0.118      | 0.109     |
+| DLA34 + FPN    | 0.2681900383192367      | 0.118      | 0.112     |
+| Ensemble       | 0.27363538075234406     | 0.121      | 0.115     |
 
 ### What Didn't Work
 - Pseudo labeling
@@ -62,3 +64,12 @@ Ensemble (ensemble_010414)          | 0.27363538075234406 | 0.121
 - Quaternion + L1Loss
 - Very large input size (3360 x 2688)
 - Eigen's depth prediction method used in CenterNet paper (`z = 1 / sigmoid(output) − 1`)
+
+## Run
+```sh
+python train.py --name resnet18_fpn --arch resnet18_fpn
+python test.py --name resnet18_fpn
+python train.py --name dla34_ddd_3dop --arch dla34_ddd_3dop --num_filters 256,256,256
+python test.py --name dla34_ddd_3dop
+python ensemble.py --models dla34_ddd_3dop,resnet18_fpn
+```

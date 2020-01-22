@@ -14,5 +14,6 @@ pretrained_weights/*
 *.bat
 tmp*/*
 visualize_submission*.py
+markdowns/*
 
 !.gitkeep
